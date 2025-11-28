@@ -57,6 +57,7 @@ app_zcash = { workspace = true, optional = true }
 app_monero = { workspace = true, optional = true }
 app_avalanche = { workspace = true, optional = true }
 app_iota = { workspace = true, optional = true }
+app_quantus = { workspace = true, optional = true }
 [lib]
 crate-type = ["staticlib"]
 
@@ -85,6 +86,7 @@ zcash = ["dep:app_zcash", "dep:zcash_vendor"]
 monero = ["dep:app_monero"]
 avalanche = ["dep:app_avalanche"]
 iota = ["dep:app_iota"]
+quantus = ["dep:app_quantus"]
 test_cmd = []
 
 debug-memory = ["multi-coins"]
@@ -109,6 +111,7 @@ multi-coins = [
     "xrp",
     "avalanche",
     "iota",
+    "quantus",
 ]
 
 btc-only = ["bitcoin"]

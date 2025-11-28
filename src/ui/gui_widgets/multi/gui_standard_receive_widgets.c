@@ -932,6 +932,13 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/195'/0'/0/%u", index);
         result = tron_get_address(hdPath, xPub);
         break;
+    case HOME_WALLET_CARD_QUANTUS:
+        result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
+        result->data = (char *)SRAM_MALLOC(64);
+        snprintf(result->data, 64, "QNT_ADDR_%u", index);
+        result->error_code = 0;
+        snprintf(hdPath, BUFFER_SIZE_128, "m/44'/9999'/0'/0/%u", index);
+        break;
     case HOME_WALLET_CARD_SUI:
         xPub = GetCurrentAccountPublicKey(XPUB_TYPE_SUI_0 + index);
         result = sui_generate_address(xPub);

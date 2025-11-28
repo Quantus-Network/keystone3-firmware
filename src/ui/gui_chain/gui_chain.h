@@ -32,6 +32,7 @@ typedef enum {
     CHAIN_BTC,
 #ifdef WEB3_VERSION
     CHAIN_ETH,
+    CHAIN_QUANTUS,
     CHAIN_SOL,
     CHAIN_BNB,
     CHAIN_HNT,

@@ -1,0 +1,18 @@
+[package]
+name = "app_quantus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+hex = { workspace = true }
+keystore = { workspace = true }
+thiserror = { workspace = true }
+app_utils = { workspace = true }
+cryptoxide = { workspace = true }
+bitcoin = { workspace = true }
+
+[dev-dependencies]
+keystore = { path = "../../keystore" }
+
