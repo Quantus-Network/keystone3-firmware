@@ -14,6 +14,8 @@
 #include "gui_home_widgets.h"
 #include "gui_fullscreen_mode.h"
 #include "keystore.h"
+#include "secret_cache.h"
+#include "bip39.h"
 #include "gui_page.h"
 #include "gui.h"
 #include "gui_tutorial_widgets.h"
@@ -932,6 +934,30 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/195'/0'/0/%u", index);
         result = tron_get_address(hdPath, xPub);
         break;
+    case HOME_WALLET_CARD_QUANTUS: {
+        char *password = SecretCacheGetPassword();
+        uint8_t entropy[ENTROPY_MAX_LEN];
+        uint8_t entropyLen;
+        char *mnemonic = NULL;
+        int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+        if (ret == SUCCESS_CODE) {
+            ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
+            if (ret == SUCCESS_CODE && mnemonic != NULL) {
+                snprintf(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
+                // let path = format!("m/44'/189189'/{index}'/0/0", index = wallet_index);
+
+                result = quantus_get_address(mnemonic, hdPath);
+                SRAM_FREE(mnemonic);
+            }
+        }
+        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        if (result == NULL) {
+            result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
+            result->data = NULL;
+            result->error_code = 1;
+        }
+        break;
+    }
     case HOME_WALLET_CARD_SUI:
         xPub = GetCurrentAccountPublicKey(XPUB_TYPE_SUI_0 + index);
         result = sui_generate_address(xPub);
