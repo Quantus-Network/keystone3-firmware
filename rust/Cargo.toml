@@ -20,6 +20,7 @@ members = [
     "apps/zcash",
     "apps/avalanche",
     "apps/iota",
+    "apps/quantus",
 
     # C interface entry
     "rust_c",
@@ -51,6 +52,7 @@ app_xrp = { path = "apps/xrp" }
 app_zcash = { path = "apps/zcash" }
 app_monero = { path = "apps/monero" }
 app_iota = { path = "apps/iota" }
+app_quantus = { path = "apps/quantus" }
 keystore = { path = "keystore", default-features = false }
 tools = { path = "tools" }
 sim_qr_reader = { path = "sim_qr_reader" }

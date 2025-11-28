@@ -1,4 +1,5 @@
 #include "gui_status_bar.h"
+#include "gui_static_const_icon.h"
 #include "account_manager.h"
 #include "gui_button.h"
 #include "gui_chain.h"
@@ -69,6 +70,7 @@ const static CoinWalletInfo_t g_coinWalletBtn[] = {
     {CHAIN_BTC, "", &coinBtc},
 #ifdef WEB3_VERSION
     {CHAIN_ETH, "", &coinEth},
+    {CHAIN_QUANTUS, "", &coinQuantus},
     {CHAIN_SOL, "", &coinSol},
     {CHAIN_BNB, "", &coinBnb},
     {CHAIN_HNT, "", &coinHelium},

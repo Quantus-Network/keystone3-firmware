@@ -3,6 +3,7 @@
 #define _GUI_GENERAL_HOME_WIDGETS_H
 
 #define HOME_WIDGETS_SURPLUS_CARD_ENUM HOME_WALLET_CARD_ETH,     \
+                                       HOME_WALLET_CARD_QUANTUS, \
                                        HOME_WALLET_CARD_SOL,     \
                                        HOME_WALLET_CARD_BNB,     \
                                        HOME_WALLET_CARD_HNT,     \
@@ -60,6 +61,7 @@
 
 #define HOME_WALLET_STATE_SURPLUS                         \
     {HOME_WALLET_CARD_ETH, false, "ETH", true},           \
+    {HOME_WALLET_CARD_QUANTUS, false, "QNT", true},       \
         {HOME_WALLET_CARD_SOL, false, "SOL", true},       \
         {HOME_WALLET_CARD_BNB, false, "BNB", false},      \
         {HOME_WALLET_CARD_HNT, false, "HNT", true},       \
@@ -124,6 +126,12 @@
             .coin = "ETH",                     \
             .chain = "Ethereum",               \
             .icon = &coinEth,                  \
+        },                                     \
+        {                                      \
+            .index = HOME_WALLET_CARD_QUANTUS, \
+            .coin = "QNT",                     \
+            .chain = "Quantus",                \
+            .icon = &coinQuantus,              \
         },                                     \
         {                                      \
             .index = HOME_WALLET_CARD_SOL,     \

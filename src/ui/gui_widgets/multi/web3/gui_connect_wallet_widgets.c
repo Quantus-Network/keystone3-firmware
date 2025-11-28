@@ -1,4 +1,5 @@
 #include "gui_connect_wallet_widgets.h"
+#include "gui_static_const_icon.h"
 #include "account_public_info.h"
 #include "gui.h"
 #include "gui_button.h"
@@ -57,6 +58,10 @@ WalletListItem_t g_walletListArray[] = {
     {WALLET_LIST_NUFI, &walletListNufi, true, WALLET_FILTER_BTC | WALLET_FILTER_ETH | WALLET_FILTER_SOL | WALLET_FILTER_ADA},
     {WALLET_LIST_CORE, &walletListCore, true, WALLET_FILTER_BTC | WALLET_FILTER_ETH | WALLET_FILTER_OTHER},
     {WALLET_LIST_HELIUM, &walletListHelium, true, WALLET_FILTER_SOL},
+    // Add QUANTUS to a list or create a new wallet entry if needed.
+    // For now, let's add it to Keystone wallet supported list if appropriate, or just ensure it's available.
+    // Assuming we might want a dedicated wallet or just see it in the asset list which is handled elsewhere.
+
     {WALLET_LIST_BLUE, &walletListBlue, true, WALLET_FILTER_BTC},
     {WALLET_LIST_ZEUS, &walletListZeus, true, WALLET_FILTER_BTC},
     {WALLET_LIST_BABYLON, &walletListBabylon, true, WALLET_FILTER_BTC},
@@ -135,7 +140,7 @@ static const lv_img_dsc_t *g_backpackWalletCoinArray[3] = {
 };
 
 static const lv_img_dsc_t *g_keystoneWalletCoinArray[] = {
-    &coinBtc, &coinEth, &coinTrx, &coinXrp, &coinBnb, &coinDoge
+    &coinBtc, &coinEth, &coinTrx, &coinXrp, &coinBnb, &coinDoge, &coinQuantus
 };
 
 static const lv_img_dsc_t *g_blueWalletCoinArray[4] = {
