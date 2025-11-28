@@ -342,6 +342,27 @@ dependencies = [
  "ur-registry",
 ]
 
+[[package]]
+name = "app_quantus"
+version = "0.1.0"
+dependencies = [
+ "app_utils",
+ "bitcoin",
+ "cryptoxide",
+ "hex",
+ "keystore",
+ "qp-poseidon",
+ "qp-rusty-crystals-dilithium",
+ "qp-rusty-crystals-hdwallet",
+ "serde",
+ "serde_json",
+ "sp-core",
+ "ss58",
+ "thiserror-core",
+ "zeroize",
+]
+
+[[package]]
 name = "app_solana"
 version = "0.1.0"
 dependencies = [
@@ -5481,6 +5502,7 @@ dependencies = [
  "app_iota",
  "app_monero",
  "app_near",
+ "app_quantus",
  "app_solana",
  "app_stellar",
  "app_sui",
