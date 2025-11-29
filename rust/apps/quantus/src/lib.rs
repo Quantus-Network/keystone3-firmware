@@ -6,8 +6,7 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use crate::errors::{QuantusError, Result};
 use qp_rusty_crystals_hdwallet::HDLattice;
-use qp_poseidon::PoseidonHasher;
-use sp_core::Hasher;
+use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 
 pub mod errors;
 
@@ -24,10 +23,7 @@ pub struct QuantusSignature {
 }
 
 fn poseidon_hash(data: &[u8]) -> [u8; 32] {
-    // PoseidonHasher::hash returns sp_core::H256 (wrapper around [u8; 32])
-    // We need to access the inner bytes.
-    let hash = PoseidonHasher::hash(data);
-    hash.into() 
+    hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
 }
 
 pub fn get_address(mnemonic: &str, path: &str) -> Result<String> {
@@ -83,7 +79,7 @@ mod tests {
         let addr0 = get_address(mnemonic, path0).unwrap();
         
         // Commenting out assertion until path is confirmed to avoid CI failure
-        assert_eq!(addr0, "qznMJss7Ls1SWBhvvL2CSHVbgTxEfnL9GgpvMTq5CWMEwfCoe");
+        assert_eq!(addr0, "qznMJss7Ls1SWBhvvL2CSHVbgTxEfnL9GgpvMTq5CWMEwfCoe", "Got address: {}", addr0);
         
         assert!(addr0.starts_with("qz"), "Address should start with qz prefix (for 189/Quantus)");
     }
