@@ -18,12 +18,14 @@ use ur_registry::traits::RegistryItem;
 #[no_mangle]
 pub unsafe extern "C" fn quantus_get_address(
     mnemonic: PtrString,
+    passphrase: PtrString,
     path: PtrString,
 ) -> *mut SimpleResponse<c_char> {
     let mnemonic = recover_c_char(mnemonic);
+    let passphrase = recover_c_char(passphrase);
     let path = recover_c_char(path);
     
-    match get_address(&mnemonic, &path) {
+    match get_address(&mnemonic, &passphrase, &path) {
         Ok(addr) => SimpleResponse::success(convert_c_char(addr) as *mut c_char).simple_c_ptr(),
         Err(e) => SimpleResponse::from(RustCError::UnexpectedError(e.to_string())).simple_c_ptr(),
     }
@@ -33,14 +35,17 @@ pub unsafe extern "C" fn quantus_get_address(
 pub unsafe extern "C" fn quantus_sign_tx(
     tx_json: PtrString,
     mnemonic: PtrString,
+    passphrase: PtrString,
+    path: PtrString,
 ) -> PtrT<UREncodeResult> {
     // 1. Get JSON string directly
     let tx_json_str = recover_c_char(tx_json);
     let mnemonic_str = recover_c_char(mnemonic);
+    let passphrase_str = recover_c_char(passphrase);
+    let path_str = recover_c_char(path);
 
     // 3. Sign the transaction
-    // Note: Passing hardcoded path for now as before.
-    let signature = match sign_tx(&tx_json_str, &mnemonic_str, "m/44'/189189'/0'/0/0") {
+    let signature = match sign_tx(&tx_json_str, &mnemonic_str, &passphrase_str, &path_str) {
         Ok(s) => s,
         Err(e) => return UREncodeResult::from(KeystoneError::SignTxFailed(e.to_string())).c_ptr(),
     };

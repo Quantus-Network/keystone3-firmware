@@ -945,8 +945,8 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
             if (ret == SUCCESS_CODE && mnemonic != NULL) {
                 snprintf(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
                 // let path = format!("m/44'/189189'/{index}'/0/0", index = wallet_index);
-
-                result = quantus_get_address(mnemonic, hdPath);
+                char *pass = password ? password : "";
+                result = quantus_get_address(mnemonic, pass, hdPath);
                 SRAM_FREE(mnemonic);
             }
         }

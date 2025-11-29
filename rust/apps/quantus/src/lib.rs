@@ -26,8 +26,8 @@ fn poseidon_hash(data: &[u8]) -> [u8; 32] {
     hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
 }
 
-pub fn get_address(mnemonic: &str, path: &str) -> Result<String> {
-    let hd_wallet = HDLattice::from_mnemonic(mnemonic, None)
+pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
+    let hd_wallet = HDLattice::from_mnemonic(mnemonic, Some(passphrase))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
     
     let keys = hd_wallet.generate_derived_keys(path)
@@ -44,12 +44,13 @@ pub fn get_address(mnemonic: &str, path: &str) -> Result<String> {
 pub fn sign_tx(
     tx_json: &str,
     mnemonic: &str,
+    passphrase: &str,
     path: &str,
 ) -> Result<QuantusSignature> {
     let _tx: QuantusTransaction = serde_json::from_str(tx_json)
         .map_err(|_| QuantusError::InvalidTransaction)?;
     
-    let hd_wallet = HDLattice::from_mnemonic(mnemonic, None)
+    let hd_wallet = HDLattice::from_mnemonic(mnemonic, Some(passphrase))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("HD Wallet error: {:?}", e)))?;
         
     let keys = hd_wallet.generate_derived_keys(path)
@@ -76,7 +77,7 @@ mod tests {
         // let path = format!("m/44'/189189'/{index}'/0/0", index = wallet_index);
 
         let path0 = "m/44'/189189'/0'/0/0";
-        let addr0 = get_address(mnemonic, path0).unwrap();
+        let addr0 = get_address(mnemonic, "", path0).unwrap();
         
         // Commenting out assertion until path is confirmed to avoid CI failure
         assert_eq!(addr0, "qznMJss7Ls1SWBhvvL2CSHVbgTxEfnL9GgpvMTq5CWMEwfCoe", "Got address: {}", addr0);

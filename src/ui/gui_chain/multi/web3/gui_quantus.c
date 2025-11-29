@@ -61,10 +61,10 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     char hdPath[BUFFER_SIZE_128];
     snprintf(hdPath, BUFFER_SIZE_128, "m/44'/189189'/0'/0/0"); // Dummy path for signing
 
-    urResult = quantus_sign_tx(json_str, mnemonic, hdPath);
+    char *pass = password ? password : "";
+    urResult = quantus_sign_tx(json_str, mnemonic, pass, hdPath);
     
     SRAM_FREE(mnemonic);
     
     return (UREncodeResult *)urResult;
 }
-
