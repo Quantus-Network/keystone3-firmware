@@ -134,9 +134,9 @@ UREncodeResult *GuiGetStandardBtcData(void)
 
 typedef UREncodeResult *MetamaskUrGetter(PtrBytes master_fingerprint, uint32_t master_fingerprint_length, enum ETHAccountType account_type, PtrT_CSliceFFI_ExtendedPublicKey public_keys, PtrString wallet_name);
 
-static UREncodeResult *get_unlimited_connect_metamask_ur(PtrBytes master_fingerprint, uint32_t master_fingerprint_length, enum ETHAccountType account_type, PtrT_CSliceFFI_ExtendedPublicKey public_keys)
+static UREncodeResult *get_unlimited_connect_metamask_ur(PtrBytes master_fingerprint, uint32_t master_fingerprint_length, enum ETHAccountType account_type, PtrT_CSliceFFI_ExtendedPublicKey public_keys, PtrString wallet_name)
 {
-    return get_connect_metamask_ur_unlimited(master_fingerprint, master_fingerprint_length, account_type, public_keys, GetWalletName());
+    return get_connect_metamask_ur_unlimited(master_fingerprint, master_fingerprint_length, account_type, public_keys, wallet_name);
 }
 
 static UREncodeResult *BasicGetMetamaskDataForAccountType(ETHAccountType accountType, MetamaskUrGetter func)

@@ -31,13 +31,13 @@ void PrintHeapInfo(void);
 #define memset_s(dest, destsz, ch, count)   memset(dest, ch, count)
 #endif
 #ifndef strcpy_s
-#define strcpy_s(dest, destsz, src)         strcpy(dest, src)
+#define strcpy_s(dest, destsz, src)         (strcpy(dest, src), 0)
 #endif
 #ifndef strcat_s
-#define strcat_s(dest, destsz, src)         strcat(dest, src)
+#define strcat_s(dest, destsz, src)         (strcat(dest, src), 0)
 #endif
 #ifndef strncpy_s
-#define strncpy_s(dest, destsz, src, size)  strncpy(dest, src, size)
+#define strncpy_s(dest, destsz, src, size)  (strncpy(dest, src, size), 0)
 #endif
 #define memcpy_s(dest, destsz, src, count)  memcpy(dest, src, count)
 #define strnlen_s(sstr, smax)               strnlen(sstr, smax)
