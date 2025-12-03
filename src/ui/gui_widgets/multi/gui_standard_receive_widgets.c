@@ -1281,5 +1281,7 @@ void GuiStandardReceivePasswordSuccess(void)
         g_keyboardWidget = NULL;
     }
     GuiStandardReceiveRefresh();
+    // Clear password cache after displaying address for security
+    ClearSecretCache();
 }
 #endif

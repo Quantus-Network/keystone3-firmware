@@ -1256,6 +1256,7 @@ static int32_t ModelVerifyAccountPass(const void *inData, uint32_t inDataLen)
     }
 
     // some scene would need clear secret after check
+    // Keep password cached after login to avoid re-prompting for read-only operations
     if (*param != SIG_SETTING_CHANGE_PASSWORD &&
             *param != SIG_SETTING_WRITE_PASSPHRASE &&
             *param != SIG_LOCK_VIEW_SCREEN_ON_VERIFY_PASSPHRASE &&
@@ -1268,6 +1269,9 @@ static int32_t ModelVerifyAccountPass(const void *inData, uint32_t inDataLen)
             *param != SIG_HARDWARE_CALL_DERIVE_PUBKEY &&
             *param != SIG_INIT_CONNECT_USB &&
             *param != SIG_QUANTUS_VERIFY_PASSWORD &&
+            // Note: Enabling these two will keep the password in cache until someone signs a transaction. 
+            // *param != SIG_LOCK_VIEW_VERIFY_PIN &&
+            // *param != SIG_LOCK_VIEW_SCREEN_GO_HOME_PASS &&
             !strnlen_s(SecretCacheGetPassphrase(), PASSPHRASE_MAX_LEN) &&
             !GuiCheckIfViewOpened(&g_createWalletView) &&
             !ModelGetPassphraseQuickAccess()) {
