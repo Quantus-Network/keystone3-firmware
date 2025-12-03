@@ -25,6 +25,8 @@
 #include "simulator_mock_define.h"
 #endif
 
+extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphrase, char *path);
+
 #define GENERAL_ADDRESS_INDEX_MAX                           999999999
 #define LEDGER_LIVE_ADDRESS_INDEX_MAX                       9
 #define ADDRESS_LONE_MODE_LEN                               (24)
@@ -710,12 +712,18 @@ static void GuiCreateSwitchAddressButtons(lv_obj_t *parent)
 static void RefreshQrCode(void)
 {
     AddressDataItem_t addressDataItem;
+    memset(&addressDataItem, 0, sizeof(addressDataItem));
 
     ModelGetAddress(GetCurrentSelectIndex(), &addressDataItem);
-    lv_qrcode_update(g_standardReceiveWidgets.qrCode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
-    lv_obj_t *fullscreenQrcode = GuiFullscreenModeGetCreatedObjectWhenVisible();
-    if (fullscreenQrcode) {
-        lv_qrcode_update(fullscreenQrcode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+    printf("RefreshQrCode: chain=%d, address='%s', len=%zu\n", g_chainCard, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+    if (addressDataItem.address[0] != '\0') {
+        lv_qrcode_update(g_standardReceiveWidgets.qrCode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+        lv_obj_t *fullscreenQrcode = GuiFullscreenModeGetCreatedObjectWhenVisible();
+        if (fullscreenQrcode) {
+            lv_qrcode_update(fullscreenQrcode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+        }
+    } else {
+        printf("ERROR: Address is empty for chain %d!\n", g_chainCard);
     }
 
 #ifdef CYPHERPUNK_VERSION
@@ -937,25 +945,64 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
     case HOME_WALLET_CARD_QUANTUS: {
         char *password = SecretCacheGetPassword();
         uint8_t entropy[ENTROPY_MAX_LEN];
-        uint8_t entropyLen;
+        uint8_t entropyLen = 0;
         char *mnemonic = NULL;
         int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
-        if (ret == SUCCESS_CODE) {
-            ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
-            if (ret == SUCCESS_CODE && mnemonic != NULL) {
-                snprintf(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
-                // let path = format!("m/44'/189189'/{index}'/0/0", index = wallet_index);
-                char *pass = password ? password : "";
-                result = quantus_get_address(mnemonic, pass, hdPath);
-                SRAM_FREE(mnemonic);
+        printf("GetAccountEntropy: ret=%d, entropyLen=%u\n", ret, entropyLen);
+        if (ret == SUCCESS_CODE && entropyLen > 0) {
+            if (entropyLen != 16 && entropyLen != 20 && entropyLen != 24 && entropyLen != 28 && entropyLen != 32) {
+                printf("Invalid entropy length: %u (must be 16, 20, 24, 28, or 32)\n", entropyLen);
+                memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+            } else {
+                ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
+                memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+                if (ret == SUCCESS_CODE && mnemonic != NULL) {
+                    snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
+                    char *pass = password ? password : "";
+                    printf("quantus_get_address: path='%s', mnemonic_len=%zu\n", hdPath, strnlen_s(mnemonic, 512));
+                    result = quantus_get_address(mnemonic, pass, hdPath);
+                    SRAM_FREE(mnemonic);
+                    if (result != NULL) {
+                        if (result->error_code != 0) {
+                            printf("quantus_get_address error: %d", result->error_code);
+                            if (result->error_message != NULL) {
+                                printf(", msg: %s", result->error_message);
+                            }
+                            printf("\n");
+                        } else if (result->data != NULL) {
+                            printf("quantus_get_address success: '%s'\n", result->data);
+                        } else {
+                            printf("quantus_get_address: error_code=0 but data is NULL\n");
+                        }
+                    } else {
+                        printf("quantus_get_address returned NULL\n");
+                    }
+                } else {
+                    printf("Failed to get mnemonic: ret=%d, mnemonic=%p\n", ret, mnemonic);
+                }
+            }
+        }
+#ifdef COMPILE_SIMULATOR
+        if (result == NULL && (ret != SUCCESS_CODE || entropyLen == 0)) {
+            const char *test_mnemonic = "orchard answer curve patient visual flower maze noise retreat penalty cage small earth domain scan pitch bottom crunch theme club client swap slice raven";
+            printf("Using test mnemonic for simulator (entropy not available)\n");
+            snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
+            result = quantus_get_address((char *)test_mnemonic, "", hdPath);
+            if (result != NULL && result->error_code == 0 && result->data != NULL) {
+                printf("quantus_get_address (test) success: '%s'\n", result->data);
+            }
+        }
+#endif
+        if (result == NULL) {
+            printf("quantus_get_address returned NULL, creating error response\n");
+            result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
+            if (result != NULL) {
+                result->data = NULL;
+                result->error_code = 1;
+                result->error_message = NULL;
             }
         }
         memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-        if (result == NULL) {
-            result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
-            result->data = NULL;
-            result->error_code = 1;
-        }
         break;
     }
     case HOME_WALLET_CARD_SUI:
@@ -1004,12 +1051,14 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         }
     }
 #endif
-    if (result->error_code == 0) {
+    if (result != NULL && result->error_code == 0 && result->data != NULL) {
         item->index = index;
         strcpy_s(item->address, ADDRESS_MAX_LEN, result->data);
         strcpy_s(item->path, 32, hdPath);
     }
-    free_simple_response_c_char(result);
+    if (result != NULL) {
+        free_simple_response_c_char(result);
+    }
 }
 
 void GuiResetCurrentStandardAddressIndex(uint8_t index)

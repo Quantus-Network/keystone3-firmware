@@ -293,7 +293,7 @@ int32_t SimulatorLoadAccountSecret(uint8_t accountIndex, AccountSecret_t *accoun
     }
 
     cJSON *passwordJson = cJSON_GetObjectItem(rootJson, "password");
-    if (passwordJson == NULL || strcmp(passwordJson->valuestring, password) != 0) {
+    if (passwordJson == NULL || passwordJson->valuestring == NULL || password == NULL || strcmp(passwordJson->valuestring, password) != 0) {
         cJSON_Delete(rootJson);
         return ret;
     }

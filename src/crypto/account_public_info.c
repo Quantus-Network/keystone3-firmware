@@ -663,6 +663,9 @@ void AccountPublicHomeCoinGet(WalletState_t *walletList, uint8_t count)
         char *retStr;
         rootJson = cJSON_CreateObject();
         for (int i = 0; i < count; i++) {
+            if (walletList[i].name == NULL) {
+                continue;
+            }
             jsonItem = cJSON_CreateObject();
             cJSON_AddItemToObject(jsonItem, "recvIndex", cJSON_CreateNumber(0));
             cJSON_AddItemToObject(jsonItem, "recvPath", cJSON_CreateNumber(0));
@@ -708,6 +711,9 @@ void AccountPublicHomeCoinGet(WalletState_t *walletList, uint8_t count)
     cJSON *rootJson = cJSON_Parse(jsonString);
     SRAM_FREE(jsonString);
     for (int i = 0; i < count; i++) {
+        if (walletList[i].name == NULL) {
+            continue;
+        }
         cJSON *item = cJSON_GetObjectItem(rootJson, walletList[i].name);
         if (item != NULL) {
             walletList[i].state = GetBoolValue(item, "manage", false);
@@ -742,6 +748,9 @@ void AccountPublicHomeCoinSet(WalletState_t *walletList, uint8_t count)
     rootJson = cJSON_Parse(jsonString);
     SRAM_FREE(jsonString);
     for (int i = 0; i < count; i++) {
+        if (walletList[i].name == NULL) {
+            continue;
+        }
         cJSON *item = cJSON_GetObjectItem(rootJson, walletList[i].name);
         if (item == NULL) {
             item = cJSON_CreateObject();
