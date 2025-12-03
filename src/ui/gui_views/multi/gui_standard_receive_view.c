@@ -4,6 +4,8 @@
 #include "gui_standard_receive_widgets.h"
 #include "gui_pending_hintbox.h"
 #include "gui_model.h"
+#include "gui_keyboard_hintbox.h"
+#include "account_manager.h"
 
 static int32_t GuiStandardReceiveViewInit(uint8_t chain)
 {
@@ -41,6 +43,20 @@ int32_t GuiStandardReceiveViewEventProcess(void *self, uint16_t usEvent, void *p
     case SIG_SETUP_RSA_PRIVATE_KEY_HIDE_LOADING:
         GuiPendingHintBoxRemove();
         break;
+    case SIG_VERIFY_PASSWORD_PASS: {
+        uint16_t *sig = (uint16_t *)param;
+        if (sig != NULL && *sig == SIG_QUANTUS_VERIFY_PASSWORD) {
+            GuiStandardReceivePasswordSuccess();
+        }
+        break;
+    }
+    case SIG_VERIFY_PASSWORD_FAIL: {
+        uint16_t *sig = (uint16_t *)param;
+        if (sig != NULL && *sig == SIG_QUANTUS_VERIFY_PASSWORD) {
+            GuiStandardReceivePasswordErrorCount(param);
+        }
+        break;
+    }
     default:
         return ERR_GUI_UNHANDLED;
     }

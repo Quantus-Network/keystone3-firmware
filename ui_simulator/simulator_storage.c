@@ -289,21 +289,41 @@ int32_t SimulatorLoadAccountSecret(uint8_t accountIndex, AccountSecret_t *accoun
 
     cJSON *rootJson = cJSON_Parse(buffer);
     if (rootJson == NULL) {
+        printf("SimulatorLoadAccountSecret: Failed to parse JSON\n");
         return ERR_KEYSTORE_PASSWORD_ERR;
     }
 
     cJSON *passwordJson = cJSON_GetObjectItem(rootJson, "password");
+    const char *storedPassword = passwordJson ? (passwordJson->valuestring ? passwordJson->valuestring : "") : "";
+    const char *providedPassword = password ? password : "";
+    printf("SimulatorLoadAccountSecret: stored_pwd='%s', provided_pwd='%s'\n", storedPassword, providedPassword);
+    
     if (passwordJson == NULL || passwordJson->valuestring == NULL || password == NULL || strcmp(passwordJson->valuestring, password) != 0) {
+        printf("SimulatorLoadAccountSecret: Password mismatch or missing\n");
         cJSON_Delete(rootJson);
-        return ret;
+        return ERR_KEYSTORE_PASSWORD_ERR;
     }
+    
     GetJsonArrayData(rootJson, accountSecret->entropy, ENTROPY_MAX_LEN, "entropy");
     GetJsonArrayData(rootJson, accountSecret->seed, SEED_LEN, "seed");
     GetJsonArrayData(rootJson, accountSecret->slip39EmsOrTonEntropyL32, SLIP39_EMS_LEN, "slip39_ems");
     GetJsonArrayData(rootJson, accountSecret->reservedData, SE_DATA_RESERVED_LEN, "reserved_data");
-    uint8_t param[64] = {0};
-    GetJsonArrayData(rootJson, param, 64, "param");
-    accountSecret->entropyLen = param[0];
+    
+    cJSON *entropyLenJson = cJSON_GetObjectItem(rootJson, "entropy_len");
+    if (entropyLenJson != NULL && cJSON_IsNumber(entropyLenJson)) {
+        accountSecret->entropyLen = (uint8_t)entropyLenJson->valueint;
+        printf("SimulatorLoadAccountSecret: Read entropyLen from entropy_len field: %u\n", accountSecret->entropyLen);
+    } else {
+        printf("SimulatorLoadAccountSecret: entropy_len field not found, trying param\n");
+        uint8_t param[64] = {0};
+        GetJsonArrayData(rootJson, param, 64, "param");
+        accountSecret->entropyLen = param[0];
+        printf("SimulatorLoadAccountSecret: Read entropyLen from param[0]: %u\n", accountSecret->entropyLen);
+    }
+    
+    char *jsonStr = cJSON_Print(rootJson);
+    printf("SimulatorLoadAccountSecret: JSON keys: %s\n", jsonStr ? jsonStr : "NULL");
+    if (jsonStr) free(jsonStr);
 
     cJSON_Delete(rootJson);
 

@@ -1172,6 +1172,9 @@ static void ModelVerifyPassSuccess(uint16_t *param)
     case SIG_SETUP_RSA_PRIVATE_KEY_WITH_PASSWORD:
         GuiApiEmitSignal(SIG_SETUP_RSA_PRIVATE_KEY_RSA_VERIFY_PASSWORD_PASS, param, sizeof(*param));
         break;
+    case SIG_QUANTUS_VERIFY_PASSWORD:
+        GuiApiEmitSignal(SIG_VERIFY_PASSWORD_PASS, param, sizeof(*param));
+        break;
     default:
         GuiApiEmitSignal(SIG_VERIFY_PASSWORD_PASS, param, sizeof(*param));
         break;
@@ -1182,6 +1185,9 @@ static void ModelVerifyPassFailed(uint16_t *param)
 {
     uint16_t signal = SIG_VERIFY_PASSWORD_FAIL;
     switch (*param) {
+    case SIG_QUANTUS_VERIFY_PASSWORD:
+        GuiApiEmitSignal(SIG_VERIFY_PASSWORD_FAIL, param, sizeof(*param));
+        break;
     case SIG_LOCK_VIEW_VERIFY_PIN:
     case SIG_LOCK_VIEW_SCREEN_GO_HOME_PASS:
         g_passwordVerifyResult.errorCount = GetLoginPasswordErrorCount();
@@ -1261,6 +1267,7 @@ static int32_t ModelVerifyAccountPass(const void *inData, uint32_t inDataLen)
             *param != SIG_MULTISIG_WALLET_DELETE_VERIFY_PASSWORD &&
             *param != SIG_HARDWARE_CALL_DERIVE_PUBKEY &&
             *param != SIG_INIT_CONNECT_USB &&
+            *param != SIG_QUANTUS_VERIFY_PASSWORD &&
             !strnlen_s(SecretCacheGetPassphrase(), PASSPHRASE_MAX_LEN) &&
             !GuiCheckIfViewOpened(&g_createWalletView) &&
             !ModelGetPassphraseQuickAccess()) {

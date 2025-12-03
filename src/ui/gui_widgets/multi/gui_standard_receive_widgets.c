@@ -7,6 +7,8 @@
 #include "librust_c.h"
 #include "assert.h"
 #include "gui_keyboard.h"
+#include "gui_keyboard_hintbox.h"
+#include "gui_model.h"
 #include "draw/lv_draw_mask.h"
 #include "stdio.h"
 #include "user_utils.h"
@@ -132,6 +134,7 @@ static uint32_t* GetCosmosChainCurrentSelectIndex();
 static StandardReceiveWidgets_t g_standardReceiveWidgets;
 static StandardReceiveTile g_StandardReceiveTileNow;
 static HOME_WALLET_CARD_ENUM g_chainCard;
+static KeyboardWidget_t *g_keyboardWidget = NULL;
 
 // to do: stored.
 static uint32_t g_showIndex;
@@ -714,6 +717,19 @@ static void RefreshQrCode(void)
     AddressDataItem_t addressDataItem;
     memset(&addressDataItem, 0, sizeof(addressDataItem));
 
+#ifdef WEB3_VERSION
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+        char *password = SecretCacheGetPassword();
+        if (password == NULL || password[0] == '\0') {
+            g_keyboardWidget = GuiCreateKeyboardWidget(g_standardReceiveWidgets.cont);
+            SetKeyboardWidgetSelf(g_keyboardWidget, &g_keyboardWidget);
+            static uint16_t sig = SIG_QUANTUS_VERIFY_PASSWORD;
+            SetKeyboardWidgetSig(g_keyboardWidget, &sig);
+            return;
+        }
+    }
+#endif
+
     ModelGetAddress(GetCurrentSelectIndex(), &addressDataItem);
     printf("RefreshQrCode: chain=%d, address='%s', len=%zu\n", g_chainCard, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
     if (addressDataItem.address[0] != '\0') {
@@ -962,39 +978,11 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
                     printf("quantus_get_address: path='%s', mnemonic_len=%zu\n", hdPath, strnlen_s(mnemonic, 512));
                     result = quantus_get_address(mnemonic, pass, hdPath);
                     SRAM_FREE(mnemonic);
-                    if (result != NULL) {
-                        if (result->error_code != 0) {
-                            printf("quantus_get_address error: %d", result->error_code);
-                            if (result->error_message != NULL) {
-                                printf(", msg: %s", result->error_message);
-                            }
-                            printf("\n");
-                        } else if (result->data != NULL) {
-                            printf("quantus_get_address success: '%s'\n", result->data);
-                        } else {
-                            printf("quantus_get_address: error_code=0 but data is NULL\n");
-                        }
-                    } else {
-                        printf("quantus_get_address returned NULL\n");
-                    }
-                } else {
-                    printf("Failed to get mnemonic: ret=%d, mnemonic=%p\n", ret, mnemonic);
                 }
             }
         }
-#ifdef COMPILE_SIMULATOR
-        if (result == NULL && (ret != SUCCESS_CODE || entropyLen == 0)) {
-            const char *test_mnemonic = "orchard answer curve patient visual flower maze noise retreat penalty cage small earth domain scan pitch bottom crunch theme club client swap slice raven";
-            printf("Using test mnemonic for simulator (entropy not available)\n");
-            snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
-            result = quantus_get_address((char *)test_mnemonic, "", hdPath);
-            if (result != NULL && result->error_code == 0 && result->data != NULL) {
-                printf("quantus_get_address (test) success: '%s'\n", result->data);
-            }
-        }
-#endif
         if (result == NULL) {
-            printf("quantus_get_address returned NULL, creating error response\n");
+            printf("quantus_get_address failed: GetAccountEntropy ret=%d, entropyLen=%u\n", ret, entropyLen);
             result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
             if (result != NULL) {
                 result->data = NULL;
@@ -1276,5 +1264,22 @@ static uint32_t* GetCosmosChainCurrentSelectIndex()
     default:
         return NULL;
     }
+}
+
+void GuiStandardReceivePasswordErrorCount(void *param)
+{
+    PasswordVerifyResult_t *passwordVerifyResult = (PasswordVerifyResult_t *)param;
+    if (g_keyboardWidget != NULL) {
+        GuiShowErrorNumber(g_keyboardWidget, passwordVerifyResult);
+    }
+}
+
+void GuiStandardReceivePasswordSuccess(void)
+{
+    if (g_keyboardWidget != NULL) {
+        GuiDeleteKeyboardWidget(g_keyboardWidget);
+        g_keyboardWidget = NULL;
+    }
+    GuiStandardReceiveRefresh();
 }
 #endif
