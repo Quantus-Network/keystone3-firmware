@@ -19,6 +19,7 @@
 #include "gui_ton.h"
 #include "gui_avax.h"
 #include "gui_iota.h"
+#include "gui_quantus.h"
 #else
 #include "gui_zcash.h"
 #include "gui_monero.h"
@@ -130,6 +131,7 @@ typedef enum {
     REMAPVIEW_TON,
     REMAPVIEW_TON_SIGNPROOF,
     REMAPVIEW_AVAX,
+    REMAPVIEW_QUANTUS,
 #endif
 
 #ifdef CYPHERPUNK_VERSION

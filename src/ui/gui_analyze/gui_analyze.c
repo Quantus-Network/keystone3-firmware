@@ -5,6 +5,7 @@
 #include "gui_analyze.h"
 #include "gui_chain.h"
 #include "gui_model.h"
+#include "gui_quantus.h"
 
 #ifndef COMPILE_SIMULATOR
 #include "safe_mem_lib.h"
@@ -64,6 +65,13 @@ const static GuiAnalyze_t g_analyzeArray[] = {
         GuiGetParsedQrData,
         NULL,
         FreeBtcMsgMemory,
+    },
+    {
+        REMAPVIEW_QUANTUS,
+        "{\"type\":\"container\",\"pos\":[36,0],\"size\":[408,526],\"bg_opa\":0,\"children\":[{\"type\":\"custom_container\",\"bg_color\":0,\"bg_opa\":0,\"pos\":[0,12],\"custom_show_func\":\"GuiQuantusOverview\"}]}",
+        GuiGetQuantusData,
+        NULL,
+        FreeQuantusMemory,
     },
     GUI_ANALYZE_OBJ_SURPLUS
 };
@@ -660,6 +668,8 @@ GetCustomContainerFunc GuiTemplateCustomFunc(char *funcName)
         return GuiBtcTxDetail;
     } else if (!strcmp(funcName, "GuiBtcMsg")) {
         return GuiBtcMsg;
+    } else if (!strcmp(funcName, "GuiQuantusOverview")) {
+        return GuiQuantusOverview;
     }
 
     return GetOtherChainCustomFunc(funcName);

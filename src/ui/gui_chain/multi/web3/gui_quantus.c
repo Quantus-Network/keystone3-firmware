@@ -10,61 +10,123 @@
 #include "secret_cache.h"
 #include "bip39.h"
 #include "user_utils.h"
+#include "gui_chain.h"
+#include "account_manager.h"
+#include "gui_chain_components.h"
 
-// Reuse ETH logic for now since we just want basic functionality
-// We can expand this later with custom logic if needed
+static URParseResult *g_urResult = NULL;
+static URParseMultiResult *g_urMultiResult = NULL;
+static bool g_isMulti = false;
+static void *g_parseResult = NULL;
+static DisplayQuantusTx *g_quantusData = NULL;
+
+#define CHECK_FREE_PARSE_RESULT(result)                                                             \
+    if (result != NULL)                                                                             \
+    {                                                                                               \
+        free_TransactionParseResult_DisplayQuantusTx((PtrT_TransactionParseResult_DisplayQuantusTx)result);   \
+        result = NULL;                                                                              \
+    }
 
 void GuiSetQuantusUrData(URParseResult *urResult, URParseMultiResult *urMultiResult, bool multi)
 {
-    // Quantus specific setup if needed
+    g_urResult = urResult;
+    g_urMultiResult = urMultiResult;
+    g_isMulti = multi;
 }
 
 void *GuiGetQuantusData(void)
 {
-    // For now just return something dummy or reuse ETH data
-    return NULL;
+    CHECK_FREE_PARSE_RESULT(g_parseResult);
+    void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
+    
+    // Parse
+    PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx(data);
+    if (result->code != 0) {
+        // handle error
+        return NULL; 
+    }
+    g_parseResult = (void *)result;
+    g_quantusData = (DisplayQuantusTx *)result->data;
+    return g_parseResult;
 }
 
 PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
 {
-    // Return valid check result for testing
-    return NULL;
+    void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
+    uint8_t mfp[4];
+    GetMasterFingerPrint(mfp);
+    return quantus_check_tx(data, mfp, 4);
+}
+
+void GuiQuantusOverview(lv_obj_t *parent, void *totalData)
+{
+    lv_obj_set_size(parent, 408, 480);
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t* container = GuiCreateContainerWithParent(parent, 408, 480);
+    lv_obj_add_flag(container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollbar_mode(container, LV_SCROLLBAR_MODE_OFF);
+
+    lv_obj_t* last_view = NULL;
+
+    if (g_quantusData) {
+        last_view = CreateTransactionItemView(container, _("To"), g_quantusData->to, last_view);
+        last_view = CreateTransactionItemView(container, _("Amount"), g_quantusData->amount, last_view);
+        last_view = CreateTransactionItemView(container, _("Fee"), g_quantusData->fee, last_view);
+        last_view = CreateTransactionItemView(container, _("Nonce"), g_quantusData->nonce, last_view);
+    }
+    
+    lv_obj_set_height(container, lv_obj_get_scroll_height(container));
 }
 
 void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
 {
-    snprintf((char *)indata, maxLen, "100 QNT");
+    if (g_quantusData) {
+         snprintf((char *)indata, maxLen, "%s", g_quantusData->amount);
+    } else {
+         snprintf((char *)indata, maxLen, "Quantus Transaction");
+    }
+}
+
+GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
+{
+    if (!strcmp(type, "GetQuantusValue")) {
+        return GetQuantusValue;
+    }
+    return NULL;
 }
 
 UREncodeResult *GuiGetQuantusSignQrCodeData(void)
 {
-    // Call Rust C binding
-    void *urResult = NULL;
-    char *password = SecretCacheGetPassword();
-    uint8_t entropy[ENTROPY_MAX_LEN];
-    uint8_t entropyLen;
-    char *mnemonic = NULL;
+    bool enable = IsPreviousLockScreenEnable();
+    SetLockScreen(false);
+    UREncodeResult *encodeResult = NULL;
+    void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
-    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
-    if (ret != SUCCESS_CODE) {
-        return NULL;
-    }
+    do {
+        uint8_t seed[64];
+        int len = GetMnemonicType() == MNEMONIC_TYPE_BIP39 ? sizeof(seed) : GetCurrentAccountEntropyLen();
+        GetAccountSeed(GetCurrentAccountIndex(), seed, SecretCacheGetPassword());
+        
+        uint8_t mfp[4];
+        GetMasterFingerPrint(mfp);
+        
+        encodeResult = quantus_sign_tx(data, seed, len, mfp, sizeof(mfp));
+        
+        ClearSecretCache();
+        CHECK_CHAIN_BREAK(encodeResult);
+    } while (0);
     
-    ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
-    memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-    
-    if (ret != SUCCESS_CODE || mnemonic == NULL) {
-        return NULL;
-    }
+    SetLockScreen(enable);
+    return encodeResult;
+}
 
-    char *json_str = "{\"amount\":100,\"to\":\"quantus_address\",\"from\":\"my_address\"}"; // Dummy JSON
-    char hdPath[BUFFER_SIZE_128];
-    snprintf(hdPath, BUFFER_SIZE_128, "m/44'/189189'/0'/0/0"); // Dummy path for signing
-
-    char *pass = password ? password : "";
-    urResult = quantus_sign_tx(json_str, mnemonic, pass, hdPath);
-    
-    SRAM_FREE(mnemonic);
-    
-    return (UREncodeResult *)urResult;
+void FreeQuantusMemory(void)
+{
+    CHECK_FREE_UR_RESULT(g_urResult, false);
+    CHECK_FREE_UR_RESULT(g_urMultiResult, true);
+    CHECK_FREE_PARSE_RESULT(g_parseResult);
+    g_quantusData = NULL;
 }

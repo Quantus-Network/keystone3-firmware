@@ -118,4 +118,6 @@ blake2b_simd = { version = "1.0.2", default-features = false }
 getrandom = "0.2"
 minicbor = { version = "0.19", features = ["alloc"] }
 zeroize = { version = "1.8.2", default-features = false }
+parity-scale-codec = { version = "3.6.9", default-features = false }
+parity-scale-codec-derive = { version = "3.6.9", default-features = false }
 # third party dependencies end

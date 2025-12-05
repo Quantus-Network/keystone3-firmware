@@ -250,6 +250,8 @@ GetLabelDataFunc GuiOtherChainTextFuncGet(char *type, GuiRemapViewType remapInde
     case REMAPVIEW_STELLAR:
     case REMAPVIEW_STELLAR_HASH:
         return GuiStellarTextFuncGet(type);
+    case REMAPVIEW_QUANTUS:
+        return GuiQuantusTextFuncGet(type);
     default:
         return NULL;
     }

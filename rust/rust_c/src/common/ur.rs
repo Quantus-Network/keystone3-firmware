@@ -279,6 +279,8 @@ pub enum ViewType {
     XmrTxUnsigned,
     #[cfg(feature = "avalanche")]
     AvaxTx,
+    #[cfg(feature = "quantus")]
+    QuantusTx,
     WebAuthResult,
     #[cfg(not(feature = "btc-only"))]
     KeyDerivationRequest,
@@ -359,6 +361,8 @@ pub enum QRCodeType {
     XmrOutputSignRequest,
     #[cfg(feature = "monero")]
     XmrTxUnsignedRequest,
+    #[cfg(feature = "quantus")]
+    QuantusSignRequest,
     URTypeUnKnown,
 }
 
@@ -672,6 +676,10 @@ impl Free for URParseMultiResult {
 impl_response!(URParseMultiResult);
 
 fn get_ur_type(ur: &String) -> Result<QRCodeType, URError> {
+    if ur.starts_with("ur:quantus-sign-request") {
+        #[cfg(feature = "quantus")]
+        return Ok(QRCodeType::QuantusSignRequest);
+    }
     let t = ur_parse_lib::keystone_ur_decoder::get_type(ur)?;
     QRCodeType::from(&t)
 }
@@ -697,9 +705,15 @@ fn _decode_ur<T: RegistryItem + TryFrom<Vec<u8>, Error = URError> + InferViewTyp
                 }
             } else {
                 match parse_result.data {
-                    Some(data) => match InferViewType::infer(&data) {
-                        Ok(t) => URParseResult::single(t, u, data),
-                        Err(e) => URParseResult::from(e),
+                    Some(data) => {
+                         #[cfg(feature = "quantus")]
+                         if matches!(u, QRCodeType::QuantusSignRequest) {
+                             return URParseResult::single(ViewType::QuantusTx, u, data);
+                         }
+                         match InferViewType::infer(&data) {
+                            Ok(t) => URParseResult::single(t, u, data),
+                            Err(e) => URParseResult::from(e),
+                        }
                     },
                     None => URParseResult::from(RustCError::UnexpectedError(
                         "ur data is none".to_string(),
@@ -718,6 +732,12 @@ pub fn decode_ur(ur: String) -> URParseResult {
         Ok(t) => t,
         Err(e) => return URParseResult::from(e),
     };
+
+    #[cfg(feature = "quantus")]
+    if matches!(ur_type, QRCodeType::QuantusSignRequest) {
+        let ur = ur.replacen("ur:quantus-sign-request", "ur:bytes", 1);
+        return _decode_ur::<Bytes>(ur, ur_type);
+    }
 
     match ur_type {
         #[cfg(feature = "bitcoin")]
@@ -782,6 +802,8 @@ pub fn decode_ur(ur: String) -> URParseResult {
         QRCodeType::XmrTxUnsignedRequest => _decode_ur::<XmrTxUnsigned>(ur, ur_type),
         #[cfg(feature = "avalanche")]
         QRCodeType::AvaxSignRequest => _decode_ur::<AvaxSignRequest>(ur, ur_type),
+        #[cfg(feature = "quantus")]
+        QRCodeType::QuantusSignRequest => _decode_ur::<Bytes>(ur, ur_type),
         #[cfg(not(feature = "btc-only"))]
         QRCodeType::QRHardwareCall => _decode_ur::<QRHardwareCall>(ur, ur_type),
         QRCodeType::URTypeUnKnown | QRCodeType::SeedSignerMessage => URParseResult::from(
@@ -800,9 +822,15 @@ fn _receive_ur<T: RegistryItem + TryFrom<Vec<u8>, Error = URError> + InferViewTy
         Ok(parse_result) => {
             if parse_result.is_complete {
                 match parse_result.data {
-                    Some(data) => match InferViewType::infer(&data) {
-                        Ok(t) => URParseMultiResult::success(t, u, data),
-                        Err(e) => URParseMultiResult::from(e),
+                    Some(data) => {
+                        #[cfg(feature = "quantus")]
+                        if matches!(u, QRCodeType::QuantusSignRequest) {
+                             return URParseMultiResult::success(ViewType::QuantusTx, u, data);
+                        }
+                        match InferViewType::infer(&data) {
+                            Ok(t) => URParseMultiResult::success(t, u, data),
+                            Err(e) => URParseMultiResult::from(e),
+                        }
                     },
                     None => URParseMultiResult::from(RustCError::UnexpectedError(
                         "UR parsed completely but data is none".to_string(),
@@ -823,6 +851,13 @@ fn receive_ur(ur: String, decoder: &mut KeystoneURDecoder) -> URParseMultiResult
         Ok(t) => t,
         Err(e) => return URParseMultiResult::from(e),
     };
+
+    #[cfg(feature = "quantus")]
+    if matches!(ur_type, QRCodeType::QuantusSignRequest) {
+        let ur = ur.replacen("ur:quantus-sign-request", "ur:bytes", 1);
+        return _receive_ur::<Bytes>(ur, ur_type, decoder);
+    }
+
     match ur_type {
         #[cfg(feature = "bitcoin")]
         QRCodeType::CryptoPSBT => _receive_ur::<CryptoPSBT>(ur, ur_type, decoder),
@@ -892,6 +927,8 @@ fn receive_ur(ur: String, decoder: &mut KeystoneURDecoder) -> URParseMultiResult
         QRCodeType::XmrTxUnsignedRequest => _receive_ur::<XmrTxUnsigned>(ur, ur_type, decoder),
         #[cfg(feature = "avalanche")]
         QRCodeType::AvaxSignRequest => _receive_ur::<AvaxSignRequest>(ur, ur_type, decoder),
+        #[cfg(feature = "quantus")]
+        QRCodeType::QuantusSignRequest => _receive_ur::<Bytes>(ur, ur_type, decoder),
         QRCodeType::URTypeUnKnown | QRCodeType::SeedSignerMessage => URParseMultiResult::from(
             URError::NotSupportURTypeError("UnKnown ur type".to_string()),
         ),

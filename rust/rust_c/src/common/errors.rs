@@ -38,6 +38,8 @@ use app_tron::errors::TronError;
 use app_xrp::errors::XRPError;
 #[cfg(feature = "zcash")]
 use app_zcash::errors::ZcashError;
+#[cfg(feature = "quantus")]
+use app_quantus::errors::QuantusError;
 
 #[derive(Debug, Clone)]
 #[repr(C)]
@@ -81,6 +83,7 @@ pub enum ErrorCodes {
     KeystoreRSAVerifyError,
     KeystoreInvalidDataError,
     KeystoreZcashOrchardSignError,
+    QuantusError,
 
     //Bitcoin errors
     BitcoinInvalidInput = 100,
@@ -591,6 +594,13 @@ impl From<&ZcashError> for ErrorCodes {
 impl From<&MoneroError> for ErrorCodes {
     fn from(value: &MoneroError) -> Self {
         Self::MoneroUnknownError
+    }
+}
+
+#[cfg(feature = "quantus")]
+impl From<&QuantusError> for ErrorCodes {
+    fn from(value: &QuantusError) -> Self {
+        Self::QuantusError
     }
 }
 

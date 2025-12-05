@@ -33,6 +33,7 @@ bool CheckViewTypeIsAllow(uint8_t viewType)
     case REMAPVIEW_ADA_CATALYST:
     case REMAPVIEW_APT:
     case REMAPVIEW_AVAX:
+    case REMAPVIEW_QUANTUS:
         return true;
     default:
         return false;
@@ -64,6 +65,7 @@ static const ViewHandlerEntry g_viewHandlerMap[] = {
 
     // avax
     {AvaxTx, GuiGetAvaxSignQrCodeData, GuiGetAvaxSignUrDataUnlimited, GuiGetAvaxCheckResult, CHAIN_AVAX, REMAPVIEW_AVAX},
+    {QuantusTx, GuiGetQuantusSignQrCodeData, NULL, GuiGetQuantusCheckResult, CHAIN_QUANTUS, REMAPVIEW_QUANTUS},
 
     // must get from GuiGetCosmosTxChain
     {CosmosTx, GuiGetCosmosSignQrCodeData, GuiGetCosmosSignQrCodeData, GuiGetCosmosCheckResult, CHAIN_ATOM, REMAPVIEW_COSMOS},

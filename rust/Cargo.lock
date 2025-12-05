@@ -331,6 +331,8 @@ dependencies = [
  "cryptoxide",
  "hex",
  "keystore",
+ "parity-scale-codec",
+ "parity-scale-codec-derive",
  "qp-poseidon-core",
  "qp-rusty-crystals-dilithium",
  "qp-rusty-crystals-hdwallet",
@@ -338,6 +340,7 @@ dependencies = [
  "serde_json",
  "ss58",
  "thiserror-core",
+ "ur-registry",
  "zeroize",
 ]
 
