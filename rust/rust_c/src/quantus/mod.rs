@@ -7,6 +7,7 @@ use app_utils::keystone::ParseContext;
 use cty::{c_char, c_int, c_void};
 use ur_registry::bytes::Bytes;
 use ur_registry::traits::RegistryItem;
+use hex;
 
 use crate::common::errors::{ErrorCodes, RustCError};
 use crate::common::structs::{TransactionCheckResult, TransactionParseResult, SimpleResponse};
@@ -72,12 +73,27 @@ pub unsafe extern "C" fn quantus_check_tx(
 
 #[no_mangle]
 pub unsafe extern "C" fn quantus_parse_tx(data: PtrUR) -> Ptr<TransactionParseResult<DisplayQuantusTx>> {
+    rust_tools::debug!(alloc::format!("Quantus: quantus_parse_tx called"));
+    
     let bytes_ur = extract_ptr_with_type!(data, Bytes);
     let raw_bytes = bytes_ur.get_bytes();
+    
+    rust_tools::debug!(alloc::format!("Quantus: Encoded transaction (hex): {}", hex::encode(&raw_bytes)));
+    rust_tools::debug!(alloc::format!("Quantus: Encoded transaction length: {} bytes", raw_bytes.len()));
 
     match parse_quantus_tx(raw_bytes.as_slice()) {
-        Ok(tx) => TransactionParseResult::success(DisplayQuantusTx::from(&tx).c_ptr()).c_ptr(),
-        Err(e) => TransactionParseResult::from(e).c_ptr(),
+        Ok(tx) => {
+            rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully"));
+            rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
+            rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));
+            rust_tools::debug!(alloc::format!("Quantus: Nonce: {}", tx.get_nonce()));
+            rust_tools::debug!(alloc::format!("Quantus: Fee: {}", tx.get_fee()));
+            TransactionParseResult::success(DisplayQuantusTx::from(&tx).c_ptr()).c_ptr()
+        },
+        Err(e) => {
+            rust_tools::debug!(alloc::format!("Quantus: Parse error: {:?}", e));
+            TransactionParseResult::from(e).c_ptr()
+        },
     }
 }
 

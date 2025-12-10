@@ -13,6 +13,7 @@
 #include "gui_chain.h"
 #include "account_manager.h"
 #include "gui_chain_components.h"
+#include "stdio.h"
 
 static URParseResult *g_urResult = NULL;
 static URParseMultiResult *g_urMultiResult = NULL;
@@ -29,24 +30,44 @@ static DisplayQuantusTx *g_quantusData = NULL;
 
 void GuiSetQuantusUrData(URParseResult *urResult, URParseMultiResult *urMultiResult, bool multi)
 {
+    printf("Quantus: GuiSetQuantusUrData called (multi=%d)\r\n", multi ? 1 : 0);
     g_urResult = urResult;
     g_urMultiResult = urMultiResult;
     g_isMulti = multi;
+    if (urResult) {
+        printf("Quantus: UR result type: %d\r\n", urResult->t);
+    }
 }
 
 void *GuiGetQuantusData(void)
 {
+    printf("Quantus: GuiGetQuantusData called\r\n");
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
-    // Parse
+    printf("Quantus: Calling quantus_parse_tx with data pointer: %p\r\n", data);
+    
     PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx(data);
     if (result->error_code != 0) {
-        // handle error
+        printf("Quantus: Parse failed with error_code: %d\r\n", result->error_code);
+        if (result->error_message) {
+            printf("Quantus: Error message: %s\r\n", result->error_message);
+        }
         return NULL; 
     }
     g_parseResult = (void *)result;
     g_quantusData = (DisplayQuantusTx *)result->data;
+    
+    if (g_quantusData) {
+        printf("Quantus: Parse successful, displaying transaction:\r\n");
+        printf("Quantus:   To: %s\r\n", g_quantusData->to ? g_quantusData->to : "(null)");
+        printf("Quantus:   Amount: %s\r\n", g_quantusData->amount ? g_quantusData->amount : "(null)");
+        printf("Quantus:   Fee: %s\r\n", g_quantusData->fee ? g_quantusData->fee : "(null)");
+        printf("Quantus:   Nonce: %s\r\n", g_quantusData->nonce ? g_quantusData->nonce : "(null)");
+    } else {
+        printf("Quantus: Warning: g_quantusData is NULL after parse\r\n");
+    }
+    
     return g_parseResult;
 }
 
@@ -60,6 +81,7 @@ PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
 
 void GuiQuantusOverview(lv_obj_t *parent, void *totalData)
 {
+    printf("Quantus: GuiQuantusOverview called\r\n");
     lv_obj_set_size(parent, 408, 480);
     lv_obj_add_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
@@ -72,10 +94,14 @@ void GuiQuantusOverview(lv_obj_t *parent, void *totalData)
     lv_obj_t* last_view = NULL;
 
     if (g_quantusData) {
+        printf("Quantus: Rendering transaction details in GUI\r\n");
         last_view = CreateTransactionItemView(container, _("To"), g_quantusData->to, last_view);
         last_view = CreateTransactionItemView(container, _("Amount"), g_quantusData->amount, last_view);
         last_view = CreateTransactionItemView(container, _("Fee"), g_quantusData->fee, last_view);
         last_view = CreateTransactionItemView(container, _("Nonce"), g_quantusData->nonce, last_view);
+        printf("Quantus: Transaction details rendered successfully\r\n");
+    } else {
+        printf("Quantus: Warning: g_quantusData is NULL, cannot render transaction details\r\n");
     }
     
     lv_obj_set_height(container, lv_obj_get_content_height(container));
