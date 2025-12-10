@@ -1,6 +1,7 @@
 set(CMAKE_SYSTEM_NAME Generic)
 cmake_minimum_required(VERSION 3.10)
 
+# Force rebuild trigger
 option(COMPILE_KEYSTONE "compile on MAIN target" ON)
 
 set(BUILD_ENVIRONMENT "DEBUG")
@@ -99,6 +100,7 @@ set(GUI_INCLUDE_PATH
     src/ui/gui_views
     src/ui/gui_assets
     src/ui/gui_assets/abi
+    src/ui/gui_frame
     src/ui/gui_frame
     ${GUI_CUSTOM_INCLUDE_PATH}
     src/ui/gui_widgets

@@ -79,47 +79,68 @@ PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
     return quantus_check_tx(data, mfp, 4);
 }
 
-void GuiQuantusOverview(lv_obj_t *parent, void *totalData)
-{
-    printf("Quantus: GuiQuantusOverview called\r\n");
-    lv_obj_set_size(parent, 408, 480);
-    lv_obj_add_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t* container = GuiCreateContainerWithParent(parent, 408, 480);
-    lv_obj_add_flag(container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_scrollbar_mode(container, LV_SCROLLBAR_MODE_OFF);
-
-    lv_obj_t* last_view = NULL;
-
-    if (g_quantusData) {
-        printf("Quantus: Rendering transaction details in GUI\r\n");
-        last_view = CreateTransactionItemView(container, _("To"), g_quantusData->to, last_view);
-        last_view = CreateTransactionItemView(container, _("Amount"), g_quantusData->amount, last_view);
-        last_view = CreateTransactionItemView(container, _("Fee"), g_quantusData->fee, last_view);
-        last_view = CreateTransactionItemView(container, _("Nonce"), g_quantusData->nonce, last_view);
-        printf("Quantus: Transaction details rendered successfully\r\n");
-    } else {
-        printf("Quantus: Warning: g_quantusData is NULL, cannot render transaction details\r\n");
-    }
-    
-    lv_obj_set_height(container, lv_obj_get_content_height(container));
-}
 
 void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
 {
     if (g_quantusData) {
-         snprintf((char *)indata, maxLen, "%s", g_quantusData->amount);
+         snprintf_s((char *)indata, maxLen, "%s QTS", g_quantusData->amount ? g_quantusData->amount : "0");
     } else {
-         snprintf((char *)indata, maxLen, "Quantus Transaction");
+         snprintf_s((char *)indata, maxLen, "Quantus Transaction");
     }
+}
+
+void GetQuantusFee(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->fee) {
+         snprintf_s((char *)indata, maxLen, "%s QTS", g_quantusData->fee);
+    } else {
+         snprintf_s((char *)indata, maxLen, "0 QTS");
+    }
+}
+
+void GetQuantusToAddress(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->to) {
+         strcpy_s((char *)indata, maxLen, g_quantusData->to);
+    } else {
+         strcpy_s((char *)indata, maxLen, "");
+    }
+}
+
+void GetQuantusFromAddress(void *indata, void *param, uint32_t maxLen)
+{
+    // Quantus doesn't have from address in current data structure
+    strcpy_s((char *)indata, maxLen, "Quantus Account");
+}
+
+void GetQuantusNonce(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->nonce) {
+         strcpy_s((char *)indata, maxLen, g_quantusData->nonce);
+    } else {
+         strcpy_s((char *)indata, maxLen, "0");
+    }
+}
+
+void GetQuantusNetwork(void *indata, void *param, uint32_t maxLen)
+{
+    strcpy_s((char *)indata, maxLen, "Quantus Network");
 }
 
 GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
 {
     if (!strcmp(type, "GetQuantusValue")) {
         return GetQuantusValue;
+    } else if (!strcmp(type, "GetQuantusFee")) {
+        return GetQuantusFee;
+    } else if (!strcmp(type, "GetQuantusToAddress")) {
+        return GetQuantusToAddress;
+    } else if (!strcmp(type, "GetQuantusFromAddress")) {
+        return GetQuantusFromAddress;
+    } else if (!strcmp(type, "GetQuantusNonce")) {
+        return GetQuantusNonce;
+    } else if (!strcmp(type, "GetQuantusNetwork")) {
+        return GetQuantusNetwork;
     }
     return NULL;
 }

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "cjson/cJSON.h"
 #include "lvgl.h"
 #include "gui_analyze.h"
@@ -68,7 +69,7 @@ const static GuiAnalyze_t g_analyzeArray[] = {
     },
     {
         REMAPVIEW_QUANTUS,
-        "{\"type\":\"container\",\"pos\":[36,0],\"size\":[408,526],\"bg_opa\":0,\"children\":[{\"type\":\"custom_container\",\"bg_color\":0,\"bg_opa\":0,\"pos\":[0,12],\"custom_show_func\":\"GuiQuantusOverview\"}]}",
+        "{\"type\":\"container\",\"pos\":[36,0],\"size\":[408,526],\"bg_opa\":0,\"children\":[{\"type\":\"container\",\"pos\":[0,12],\"size\":[408,144],\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Value\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text\":\"Fee\",\"pos\":[24,98],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusValue\",\"pos\":[24,50],\"text_color\":16090890,\"font\":\"openSansEnLittleTitle\"},{\"type\":\"label\",\"text_func\":\"GetQuantusFee\",\"pos\":[156,98],\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,62],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Network\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusNetwork\",\"pos\":[120,16],\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,244],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"From\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusFromAddress\",\"text_width\":360,\"pos\":[24,54],\"font\":\"openSansEnIllustrate\"},{\"type\":\"label\",\"text\":\"To\",\"pos\":[24,130],\"text_opa\":144,\"font\":\"openSansEnIllustrate\"},{\"type\":\"label\",\"text_func\":\"GetQuantusToAddress\",\"text_width\":360,\"pos\":[0,8],\"align_to\":-2,\"align\":13,\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,62],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Nonce\",\"pos\":[24,16],\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusNonce\",\"pos\":[101,16]}]}]}",
         GuiGetQuantusData,
         NULL,
         FreeQuantusMemory,
@@ -662,21 +663,27 @@ __attribute__((weak)) GetCustomContainerFunc GetOtherChainCustomFunc(char *funcN
 
 GetCustomContainerFunc GuiTemplateCustomFunc(char *funcName)
 {
+    printf("GuiTemplateCustomFunc: looking for func '%s'\r\n", funcName);
     if (!strcmp(funcName, "GuiBtcTxOverview")) {
         return GuiBtcTxOverview;
     } else if (!strcmp(funcName, "GuiBtcTxDetail")) {
         return GuiBtcTxDetail;
     } else if (!strcmp(funcName, "GuiBtcMsg")) {
         return GuiBtcMsg;
-    } else if (!strcmp(funcName, "GuiQuantusOverview")) {
-        return GuiQuantusOverview;
     }
 
-    return GetOtherChainCustomFunc(funcName);
+    GetCustomContainerFunc other = GetOtherChainCustomFunc(funcName);
+    if (other == NULL) {
+        printf("GuiTemplateCustomFunc: Function '%s' not found!\r\n", funcName);
+    }
+    return other;
 }
 
 lv_obj_t *GuiWidgetCustomContainer(lv_obj_t *parent, cJSON *json)
 {
+    printf("===== GuiWidgetCustomContainer ENTERED =====\r\n");
+    fflush(stdout);
+    
     lv_obj_t *obj = lv_obj_create(parent);
     lv_obj_set_style_outline_width(obj, 0, LV_STATE_DEFAULT | LV_PART_MAIN);
     lv_obj_set_style_border_width(obj, 0, LV_STATE_DEFAULT | LV_PART_MAIN);
@@ -686,12 +693,30 @@ lv_obj_t *GuiWidgetCustomContainer(lv_obj_t *parent, cJSON *json)
 
     GetCustomContainerFunc func = NULL;
     cJSON *item = cJSON_GetObjectItem(json, "custom_show_func");
+    printf("GuiWidgetCustomContainer: item=%p\r\n", item);
+    fflush(stdout);
     if (item != NULL) {
+        printf("GuiWidgetCustomContainer: calling func '%s'\r\n", item->valuestring);
+        fflush(stdout);
         func = GuiTemplateCustomFunc(item->valuestring);
+        printf("GuiWidgetCustomContainer: func=%p\r\n", func);
+        fflush(stdout);
         if (func != NULL) {
+            printf("GuiWidgetCustomContainer: func found, calling it with obj=%p, g_totalData=%p\r\n", obj, g_totalData);
+            fflush(stdout);
             func(obj, g_totalData);
+            printf("GuiWidgetCustomContainer: func returned\r\n");
+            fflush(stdout);
+        } else {
+            printf("GuiWidgetCustomContainer: func is NULL!\r\n");
+            fflush(stdout);
         }
+    } else {
+        printf("GuiWidgetCustomContainer: item is NULL!\r\n");
+        fflush(stdout);
     }
+    printf("===== GuiWidgetCustomContainer EXITING =====\r\n");
+    fflush(stdout);
     return obj;
 }
 
@@ -979,7 +1004,11 @@ static lv_obj_t *GuiWidgetFactoryCreate(lv_obj_t *parent, cJSON *json)
     } else if (0 == strcmp(type, "tabview_child")) {
         obj = GuiWidgetTabViewChild(parent, json);
     } else if (0 == strcmp(type, "custom_container")) {
+        printf("GuiWidgetFactoryCreate: Found custom_container type!\r\n");
+        fflush(stdout);
         obj = GuiWidgetCustomContainer(parent, json);
+        printf("GuiWidgetFactoryCreate: GuiWidgetCustomContainer returned obj=%p\r\n", obj);
+        fflush(stdout);
     } else if (0 == strcmp(type, "textarea")) {
         obj = GuiWidgetTextArea(parent, json);
     } else if (0 == strcmp(type, "json_label")) {
@@ -1015,14 +1044,20 @@ static void* CreateTransactionDetailWidgets()
     lv_fs_file_t fd;
     uint32_t size;
 #define JSON_MAX_LEN (1024 * 100)
-    char buf[JSON_MAX_LEN];
-    if (LV_FS_RES_OK != lv_fs_open(&fd, g_analyzeArray[index].config, LV_FS_MODE_RD)) {
-        printf("lv_fs_open failed %s\n", g_analyzeArray[index].config);
-        return NULL;
-    }
+    static char buf[JSON_MAX_LEN];
+    bool loaded_from_file = false;
 
-    lv_fs_read(&fd, buf, JSON_MAX_LEN, &size);
-    buf[size] = '\0';
+    if (LV_FS_RES_OK == lv_fs_open(&fd, g_analyzeArray[index].config, LV_FS_MODE_RD)) {
+        lv_fs_read(&fd, buf, JSON_MAX_LEN, &size);
+        buf[size] = '\0';
+        lv_fs_close(&fd);
+        loaded_from_file = true;
+    } else {
+        printf("lv_fs_open failed %s, fallback to inline json\n", g_analyzeArray[index].config);
+        strncpy(buf, g_analyzeArray[index].config, JSON_MAX_LEN - 1);
+        buf[JSON_MAX_LEN - 1] = '\0';
+        size = strlen(buf);
+    }
 #endif
 
 #ifdef COMPILE_SIMULATOR
@@ -1032,14 +1067,13 @@ static void* CreateTransactionDetailWidgets()
 #endif
     if (paramJson == NULL) {
         printf("cJSON_Parse failed\n");
-#ifdef COMPILE_SIMULATOR
-        lv_fs_close(&fd);
-#endif
         return NULL;
     }
     lv_obj_t *obj = GuiWidgetFactoryCreate(g_templateContainer, paramJson);
 #ifdef COMPILE_SIMULATOR
-    lv_fs_close(&fd);
+    if (loaded_from_file) {
+        lv_fs_close(&fd);
+    }
 #endif
     cJSON_Delete(paramJson);
     return obj;
