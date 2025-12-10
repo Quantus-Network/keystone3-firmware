@@ -41,7 +41,7 @@ void *GuiGetQuantusData(void)
     
     // Parse
     PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx(data);
-    if (result->code != 0) {
+    if (result->error_code != 0) {
         // handle error
         return NULL; 
     }
@@ -78,7 +78,7 @@ void GuiQuantusOverview(lv_obj_t *parent, void *totalData)
         last_view = CreateTransactionItemView(container, _("Nonce"), g_quantusData->nonce, last_view);
     }
     
-    lv_obj_set_height(container, lv_obj_get_scroll_height(container));
+    lv_obj_set_height(container, lv_obj_get_content_height(container));
 }
 
 void GetQuantusValue(void *indata, void *param, uint32_t maxLen)

@@ -1,0 +1,13 @@
+[package]
+name = "ur_gen"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ur-registry = { workspace = true }
+hex = { workspace = true }
+parity-scale-codec = { workspace = true }
+parity-scale-codec-derive = { workspace = true }
+serde = { workspace = true }
+app_quantus = { path = "../apps/quantus" }
+

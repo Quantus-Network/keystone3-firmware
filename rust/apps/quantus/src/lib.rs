@@ -9,7 +9,6 @@ use crate::structs::ParsedQuantusTx;
 use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 use parity_scale_codec::{Encode, Decode};
-use ur_registry::pb::protoc;
 use app_utils::keystone;
 
 pub mod errors;
@@ -61,7 +60,7 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
 pub fn sign_raw_tx(
     data: Vec<u8>,
     _context: keystone::ParseContext,
-    seed: &[u8],
+    _seed: &[u8],
 ) -> Result<(String, String)> {
     // 2. Decode SCALE bytes to QuantusTransaction
     let _tx = QuantusTransaction::decode(&mut &data[..])

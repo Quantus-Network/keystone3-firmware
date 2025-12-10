@@ -9,7 +9,7 @@ use ur_registry::bytes::Bytes;
 use ur_registry::traits::RegistryItem;
 
 use crate::common::errors::{ErrorCodes, RustCError};
-use crate::common::structs::{TransactionCheckResult, TransactionParseResult};
+use crate::common::structs::{TransactionCheckResult, TransactionParseResult, SimpleResponse};
 use crate::common::types::{PtrBytes, PtrString, PtrT, PtrUR, Ptr};
 use crate::common::ur::{UREncodeResult, ViewType};
 use crate::common::utils::{convert_c_char, recover_c_char};
@@ -78,6 +78,22 @@ pub unsafe extern "C" fn quantus_parse_tx(data: PtrUR) -> Ptr<TransactionParseRe
     match parse_quantus_tx(raw_bytes.as_slice()) {
         Ok(tx) => TransactionParseResult::success(DisplayQuantusTx::from(&tx).c_ptr()).c_ptr(),
         Err(e) => TransactionParseResult::from(e).c_ptr(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn quantus_get_address(
+    mnemonic: PtrString,
+    passphrase: PtrString,
+    path: PtrString,
+) -> *mut SimpleResponse<c_char> {
+    let mnemonic = recover_c_char(mnemonic);
+    let passphrase = recover_c_char(passphrase);
+    let path = recover_c_char(path);
+    
+    match app_quantus::get_address(&mnemonic, &passphrase, &path) {
+        Ok(result) => SimpleResponse::success(convert_c_char(result) as *mut c_char).simple_c_ptr(),
+        Err(e) => SimpleResponse::from(e).simple_c_ptr(),
     }
 }
 

@@ -21,6 +21,7 @@ members = [
     "apps/avalanche",
     "apps/iota",
     "apps/quantus",
+    "ur_gen",
 
     # C interface entry
     "rust_c",

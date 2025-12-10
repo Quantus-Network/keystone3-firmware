@@ -5585,6 +5585,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ur_gen"
+version = "0.1.0"
+dependencies = [
+ "app_quantus",
+ "hex",
+ "parity-scale-codec",
+ "parity-scale-codec-derive",
+ "serde",
+ "ur-registry",
+]
+
+[[package]]
 name = "urlencoding"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

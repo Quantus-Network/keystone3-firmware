@@ -204,8 +204,8 @@ macro_rules! impl_new_error {
             }
         }
         #[cfg(feature = "quantus")]
-        impl From<app_quantus::errors::QuantusError> for $name {
-            fn from(value: app_quantus::errors::QuantusError) -> Self {
+        impl From<::app_quantus::errors::QuantusError> for $name {
+            fn from(value: ::app_quantus::errors::QuantusError) -> Self {
                 Self::error(ErrorCodes::from(&value), value.to_string())
             }
         }
@@ -343,8 +343,8 @@ macro_rules! impl_new_error {
             }
         }
         #[cfg(feature = "quantus")]
-        impl<$t: Free> From<app_quantus::errors::QuantusError> for $name<$t> {
-            fn from(value: app_quantus::errors::QuantusError) -> Self {
+        impl<$t: Free> From<::app_quantus::errors::QuantusError> for $name<$t> {
+            fn from(value: ::app_quantus::errors::QuantusError) -> Self {
                 Self::error(ErrorCodes::from(&value), value.to_string())
             }
         }
@@ -473,6 +473,12 @@ macro_rules! impl_simple_new_error {
         #[cfg(feature = "monero")]
         impl<$t> From<app_monero::errors::MoneroError> for $name<$t> {
             fn from(value: app_monero::errors::MoneroError) -> Self {
+                Self::error(ErrorCodes::from(&value), value.to_string())
+            }
+        }
+        #[cfg(feature = "quantus")]
+        impl<$t> From<::app_quantus::errors::QuantusError> for $name<$t> {
+            fn from(value: ::app_quantus::errors::QuantusError) -> Self {
                 Self::error(ErrorCodes::from(&value), value.to_string())
             }
         }
