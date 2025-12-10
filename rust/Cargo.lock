@@ -336,6 +336,7 @@ dependencies = [
  "qp-poseidon-core",
  "qp-rusty-crystals-dilithium",
  "qp-rusty-crystals-hdwallet",
+ "rust_tools",
  "serde",
  "serde_json",
  "ss58",

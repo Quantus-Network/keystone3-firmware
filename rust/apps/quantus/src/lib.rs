@@ -10,9 +10,12 @@ use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 use parity_scale_codec::{Encode, Decode};
 use app_utils::keystone;
+use rust_tools::debug;
 
 pub mod errors;
 pub mod structs;
+pub mod substrate;
+pub mod metadata;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
 pub struct QuantusTransaction {
@@ -46,15 +49,45 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
 }
 
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
-    let tx = QuantusTransaction::decode(&mut &data[..])
-        .map_err(|_| QuantusError::InvalidTransaction)?;
-        
-    Ok(ParsedQuantusTx::new(
-        tx.to,
-        alloc::format!("{}", tx.amount),
-        alloc::format!("{}", tx.nonce),
-        "0".to_string(),
-    ))
+    use crate::substrate::{SubstrateSignerPayload, BalancesTransferCall};
+    use crate::metadata::get_quantus_metadata;
+    
+    debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
+    
+    let metadata = get_quantus_metadata();
+    
+    match SubstrateSignerPayload::decode(data, &metadata) {
+        Ok(payload) => {
+            debug!("SubstrateSignerPayload decoded successfully".to_string());
+            let transfer_call = payload.call.parse_balances_transfer(&metadata)?;
+            let to_address = transfer_call.to_ss58_address()?;
+            let amount_str = alloc::format!("{}", transfer_call.amount);
+            let nonce_str = alloc::format!("{}", payload.params.nonce);
+            let fee_str = alloc::format!("{}", payload.params.tip);
+            
+            debug!(alloc::format!("To: {}, Amount: {}, Nonce: {}, Fee: {}", to_address, amount_str, nonce_str, fee_str));
+            
+            Ok(ParsedQuantusTx::new(
+                to_address,
+                amount_str,
+                nonce_str,
+                fee_str,
+            ))
+        }
+        Err(e) => {
+            debug!(alloc::format!("SubstrateSignerPayload decode failed: {:?}", e));
+            debug!("Falling back to QuantusTransaction decode".to_string());
+            let tx = QuantusTransaction::decode(&mut &data[..])
+                .map_err(|_| QuantusError::InvalidTransaction)?;
+                
+            Ok(ParsedQuantusTx::new(
+                tx.to,
+                alloc::format!("{}", tx.amount),
+                alloc::format!("{}", tx.nonce),
+                "0".to_string(),
+            ))
+        }
+    }
 }
 
 pub fn sign_raw_tx(
