@@ -19,6 +19,9 @@ ss58 = { version = "0.0.3", default-features = false }
 zeroize = { version = "1.8", features = ["derive"], default-features = false }
 qp-poseidon-core = { version = "1.0.1", default-features = false }
 parity-scale-codec = { workspace = true }
+base58 = { version = "0.2", default-features = false }
+blake2 = { version = "0.10", default-features = false }
+
 parity-scale-codec-derive = { workspace = true }
 ur-registry = { workspace = true }
 

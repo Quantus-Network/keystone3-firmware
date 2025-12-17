@@ -327,7 +327,9 @@ name = "app_quantus"
 version = "0.1.0"
 dependencies = [
  "app_utils",
+ "base58",
  "bitcoin",
+ "blake2",
  "cryptoxide",
  "hex",
  "keystore",

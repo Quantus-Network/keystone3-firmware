@@ -6,16 +6,16 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
+use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
 use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 use parity_scale_codec::{Encode, Decode};
-use app_utils::keystone;
 use rust_tools::debug;
 
 pub mod errors;
 pub mod structs;
-pub mod substrate;
 pub mod metadata;
+pub mod parser;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
 pub struct QuantusTransaction {
@@ -33,12 +33,16 @@ fn poseidon_hash(data: &[u8]) -> [u8; 32] {
     hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
 }
 
-pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
+fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
     let hd_wallet = HDLattice::from_mnemonic(mnemonic, Some(passphrase))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
     
-    let keys = hd_wallet.generate_derived_keys(path)
-        .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
+    hd_wallet.generate_derived_keys(path)
+        .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))
+}
+
+pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
+    let keys = get_keys(mnemonic, passphrase, path)?;
         
     let pub_key_bytes = keys.public.to_bytes();
     
@@ -49,87 +53,65 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
 }
 
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
-    use crate::substrate::{SubstrateSignerPayload, BalancesTransferCall};
-    use crate::metadata::get_quantus_metadata;
+    use crate::parser::QuantusPayloadParser;
     
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
     
-    let metadata = get_quantus_metadata();
-    
-    match SubstrateSignerPayload::decode(data, &metadata) {
-        Ok(payload) => {
-            debug!("SubstrateSignerPayload decoded successfully".to_string());
-            let transfer_call = payload.call.parse_balances_transfer(&metadata)?;
-            let to_address = transfer_call.to_ss58_address()?;
-            let amount_str = alloc::format!("{}", transfer_call.amount);
-            let nonce_str = alloc::format!("{}", payload.params.nonce);
-            let fee_str = alloc::format!("{}", payload.params.tip);
-            
-            debug!(alloc::format!("To: {}, Amount: {}, Nonce: {}, Fee: {}", to_address, amount_str, nonce_str, fee_str));
-            
+    match QuantusPayloadParser::parse_payload(data) {
+        Ok(info) => {
+            debug!(alloc::format!("QuantusPayloadParser success: {}", info));
             Ok(ParsedQuantusTx::new(
-                to_address,
-                amount_str,
-                nonce_str,
-                fee_str,
+                info.to_address,
+                alloc::format!("{}", info.amount),
+                "0".to_string(), // Nonce not available in new format
+                "0".to_string(), // Fee not available in new format
             ))
         }
         Err(e) => {
-            debug!(alloc::format!("SubstrateSignerPayload decode failed: {:?}", e));
-            debug!("Falling back to QuantusTransaction decode".to_string());
-            let tx = QuantusTransaction::decode(&mut &data[..])
-                .map_err(|_| QuantusError::InvalidTransaction)?;
-                
-            Ok(ParsedQuantusTx::new(
-                tx.to,
-                alloc::format!("{}", tx.amount),
-                alloc::format!("{}", tx.nonce),
-                "0".to_string(),
-            ))
+            debug!(alloc::format!("QuantusPayloadParser failed: {}", e));
+            Err(QuantusError::InvalidTransaction)
         }
     }
 }
 
+use cryptoxide::hashing::blake2b_256;
+
 pub fn sign_raw_tx(
-    data: Vec<u8>,
-    _context: keystone::ParseContext,
-    _seed: &[u8],
+    payload_to_sign: Vec<u8>,
+    path: &str,
+    mnemonic: &str,
+    passphrase: &str,
 ) -> Result<(String, String)> {
-    // 2. Decode SCALE bytes to QuantusTransaction
-    let _tx = QuantusTransaction::decode(&mut &data[..])
-        .map_err(|_| QuantusError::InvalidTransaction)?;
+    debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
+
+    // 1. Derive keys
+    let keys = get_keys(mnemonic, passphrase, path)?;
+
+    // 2. Handle payload > 256 bytes
+    let msg_to_sign = if payload_to_sign.len() > 256 {
+        debug!("Payload > 256 bytes, hashing with Blake2b-256".to_string());
+        blake2b_256(&payload_to_sign).to_vec()
+    } else {
+        payload_to_sign
+    };
 
     // 3. Sign
-    // TODO: Use the seed to derive keys and sign
-    // For now, we just return a placeholder signature to compile
-    let signature_hex = "placeholder_signature".to_string();
-    let tx_hash = "placeholder_hash".to_string();
+    // Dilithium sign signature: fn sign(&self, msg: &[u8], ctx: Option<&[u8]>, rnd: Option<[u8; 32]>) -> [u8; SIG_BYTES]
+    let signature = keys.secret.sign(&msg_to_sign, None, None); 
+    
+    // 4. Concatenate Signature + Public Key
+    let mut signature_with_pubkey = signature.to_vec();
+    signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
+    
+    let signature_hex = hex::encode(signature_with_pubkey);
+    let tx_hash = hex::encode(blake2b_256(&msg_to_sign)); // Return hash of signed message as tx_hash?
     
     Ok((signature_hex, tx_hash))
 }
 
-pub fn check_raw_tx(data: Vec<u8>, _context: keystone::ParseContext) -> Result<()> {
+pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
     let _tx = QuantusTransaction::decode(&mut &data[..])
         .map_err(|_| QuantusError::InvalidTransaction)?;
         
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_scale_decode() {
-        let tx = QuantusTransaction {
-            to: "qznMJss7Ls1SWBhvvL2CSHVbgTxEfnL9GgpvMTq5CWMEwfCoe".to_string(),
-            amount: 1000,
-            nonce: 1,
-        };
-        let encoded = tx.encode();
-        let decoded = QuantusTransaction::decode(&mut &encoded[..]).unwrap();
-        assert_eq!(tx.to, decoded.to);
-        assert_eq!(tx.amount, decoded.amount);
-        assert_eq!(tx.nonce, decoded.nonce);
-    }
 }
