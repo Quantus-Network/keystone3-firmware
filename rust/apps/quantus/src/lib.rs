@@ -3,31 +3,18 @@ extern crate alloc;
 
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-use serde::{Deserialize, Serialize};
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
 use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
 use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
-use parity_scale_codec::{Encode, Decode};
 use rust_tools::debug;
+use cryptoxide::hashing::blake2b_256;
 
 pub mod errors;
 pub mod structs;
 pub mod metadata;
 pub mod parser;
-
-#[derive(Serialize, Deserialize, Debug, Clone, Encode, Decode)]
-pub struct QuantusTransaction {
-    pub to: String,
-    pub amount: u64,
-    pub nonce: u64,
-}
-
-#[derive(Debug)]
-pub struct QuantusSignature {
-    pub signature: Vec<u8>,
-}
 
 fn poseidon_hash(data: &[u8]) -> [u8; 32] {
     hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
@@ -103,8 +90,6 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
         }
     }
 }
-
-use cryptoxide::hashing::blake2b_256;
 
 pub fn sign_raw_tx(
     payload_to_sign: Vec<u8>,

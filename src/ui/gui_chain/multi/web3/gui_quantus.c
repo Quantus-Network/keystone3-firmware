@@ -64,6 +64,8 @@ void *GuiGetQuantusData(void)
         printf("Quantus:   Amount: %s\r\n", g_quantusData->amount ? g_quantusData->amount : "(null)");
         printf("Quantus:   Fee: %s\r\n", g_quantusData->fee ? g_quantusData->fee : "(null)");
         printf("Quantus:   Nonce: %s\r\n", g_quantusData->nonce ? g_quantusData->nonce : "(null)");
+        printf("Quantus:   Reversible: %s\r\n", g_quantusData->is_reversible ? "true" : "false");
+        printf("Quantus:   Timeframe: %s\r\n", g_quantusData->reversible_timeframe ? g_quantusData->reversible_timeframe : "(null)");
     } else {
         printf("Quantus: Warning: g_quantusData is NULL after parse\r\n");
     }
@@ -122,6 +124,24 @@ void GetQuantusNonce(void *indata, void *param, uint32_t maxLen)
     }
 }
 
+void GetQuantusReversibleTimeframe(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->is_reversible && g_quantusData->reversible_timeframe) {
+         snprintf_s((char *)indata, maxLen, "%s", g_quantusData->reversible_timeframe);
+    } else {
+         snprintf_s((char *)indata, maxLen, "");
+    }
+}
+
+void GetQuantusIsReversible(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->is_reversible) {
+        strcpy_s((char *)indata, maxLen, "true");
+    } else {
+        strcpy_s((char *)indata, maxLen, "false");
+    }
+}
+
 void GetQuantusNetwork(void *indata, void *param, uint32_t maxLen)
 {
     strcpy_s((char *)indata, maxLen, "Quantus Network");
@@ -139,6 +159,10 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
         return GetQuantusFromAddress;
     } else if (!strcmp(type, "GetQuantusNonce")) {
         return GetQuantusNonce;
+    } else if (!strcmp(type, "GetQuantusReversibleTimeframe")) {
+        return GetQuantusReversibleTimeframe;
+    } else if (!strcmp(type, "GetQuantusIsReversible")) {
+        return GetQuantusIsReversible;
     } else if (!strcmp(type, "GetQuantusNetwork")) {
         return GetQuantusNetwork;
     }
@@ -153,14 +177,36 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
     do {
-        uint8_t seed[64];
-        int len = GetMnemonicType() == MNEMONIC_TYPE_BIP39 ? sizeof(seed) : GetCurrentAccountEntropyLen();
-        GetAccountSeed(GetCurrentAccountIndex(), seed, SecretCacheGetPassword());
+        char *mnemonic = NULL;
+        char *password = SecretCacheGetPassword();
+        char *passphrase = password ? password : "";
+        char path[] = "m/44'/189'/0'/0/0"; // Default Quantus path
+
+        if (GetMnemonicType() == MNEMONIC_TYPE_BIP39) {
+            uint8_t entropy[ENTROPY_MAX_LEN];
+            uint8_t entropyLen = 0;
+            int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+            if (ret != SUCCESS_CODE || entropyLen == 0) {
+                printf("Quantus: GetAccountEntropy failed or empty\r\n");
+                break;
+            }
+            
+            bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
+            memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        } else {
+             // Handle other mnemonic types if necessary or error out
+             printf("Quantus: Only BIP39 supported for now\r\n");
+             break;
+        }
         
         uint8_t mfp[4];
         GetMasterFingerPrint(mfp);
         
-        encodeResult = quantus_sign_tx(data, seed, len, mfp, sizeof(mfp));
+        if (mnemonic) {
+            encodeResult = quantus_sign_tx(data, mnemonic, passphrase, path, mfp, sizeof(mfp));
+            memset_s(mnemonic, strlen(mnemonic), 0, strlen(mnemonic));
+            SRAM_FREE(mnemonic);
+        }
         
         ClearSecretCache();
         CHECK_CHAIN_BREAK(encodeResult);
