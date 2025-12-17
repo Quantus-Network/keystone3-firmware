@@ -11,7 +11,7 @@ use hex;
 use crate::common::errors::{ErrorCodes, RustCError};
 use crate::common::structs::{TransactionCheckResult, TransactionParseResult, SimpleResponse};
 use crate::common::types::{PtrBytes, PtrString, PtrT, PtrUR, Ptr};
-use crate::common::ur::{UREncodeResult, ViewType};
+use crate::common::ur::{UREncodeResult, ViewType, FRAGMENT_MAX_LENGTH_DEFAULT};
 use crate::common::utils::{convert_c_char, recover_c_char};
 use crate::{
     extract_array, extract_ptr_with_type, impl_c_ptr, impl_new_error,
@@ -43,7 +43,11 @@ pub unsafe extern "C" fn quantus_sign_tx(
     let raw_bytes = bytes_ur.get_bytes();
 
     match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase) {
-        Ok((sign_result, _tx_hash)) => UREncodeResult::single(sign_result).c_ptr(),
+        Ok((sign_result, _tx_hash)) => UREncodeResult::encode(
+            sign_result,
+            "bytes".to_string(),
+            FRAGMENT_MAX_LENGTH_DEFAULT
+        ).c_ptr(),
         Err(e) => UREncodeResult::from(e).c_ptr(),
     }
 }

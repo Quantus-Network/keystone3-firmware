@@ -81,7 +81,7 @@ pub fn sign_raw_tx(
     path: &str,
     mnemonic: &str,
     passphrase: &str,
-) -> Result<(String, String)> {
+) -> Result<(Vec<u8>, String)> {
     debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
 
     // 1. Derive keys
@@ -103,10 +103,8 @@ pub fn sign_raw_tx(
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
     
-    let signature_hex = hex::encode(signature_with_pubkey);
     let tx_hash = hex::encode(blake2b_256(&msg_to_sign)); // Return hash of signed message as tx_hash?
-    
-    Ok((signature_hex, tx_hash))
+    Ok((signature_with_pubkey, tx_hash))
 }
 
 pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
