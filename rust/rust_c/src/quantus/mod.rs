@@ -82,6 +82,8 @@ pub unsafe extern "C" fn quantus_parse_tx(data: PtrUR) -> Ptr<TransactionParseRe
             rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully"));
             rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
             rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));
+            rust_tools::debug!(alloc::format!("Quantus: Reversible: {}", tx.get_is_reversible()));
+            rust_tools::debug!(alloc::format!("Quantus: Timeframe: {}", tx.get_reversible_timeframe()));
             rust_tools::debug!(alloc::format!("Quantus: Nonce: {}", tx.get_nonce()));
             rust_tools::debug!(alloc::format!("Quantus: Fee: {}", tx.get_fee()));
             TransactionParseResult::success(DisplayQuantusTx::from(&tx).c_ptr()).c_ptr()

@@ -13,6 +13,8 @@ pub struct DisplayQuantusTx {
     pub amount: PtrString,
     pub nonce: PtrString,
     pub fee: PtrString,
+    pub is_reversible: bool,
+    pub reversible_timeframe: PtrString,
 }
 
 impl From<&ParsedQuantusTx> for DisplayQuantusTx {
@@ -22,6 +24,8 @@ impl From<&ParsedQuantusTx> for DisplayQuantusTx {
             amount: convert_c_char(tx.get_amount()),
             nonce: convert_c_char(tx.get_nonce()),
             fee: convert_c_char(tx.get_fee()),
+            is_reversible: tx.get_is_reversible(),
+            reversible_timeframe: convert_c_char(tx.get_reversible_timeframe()),
         }
     }
 }
@@ -32,6 +36,7 @@ impl Free for DisplayQuantusTx {
         free_str_ptr!(self.amount);
         free_str_ptr!(self.nonce);
         free_str_ptr!(self.fee);
+        free_str_ptr!(self.reversible_timeframe);
     }
 }
 

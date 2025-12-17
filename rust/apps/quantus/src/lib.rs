@@ -52,6 +52,28 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
     Ok(ss58::encode(&account_id, ss58::Ss58AddressFormat::Custom(189)))
 }
 
+fn format_duration(ms: u64) -> String {
+    let seconds = ms / 1000;
+    if seconds == 0 {
+        return "".to_string();
+    }
+    
+    let days = seconds / 86400;
+    let remainder_d = seconds % 86400;
+    let hours = remainder_d / 3600;
+    let remainder_h = remainder_d % 3600;
+    let minutes = remainder_h / 60;
+    let sec = remainder_h % 60;
+
+    let mut result = String::new();
+    if days > 0 { result.push_str(&alloc::format!("{}d ", days)); }
+    if hours > 0 { result.push_str(&alloc::format!("{}h ", hours)); }
+    if minutes > 0 { result.push_str(&alloc::format!("{}m ", minutes)); }
+    if sec > 0 { result.push_str(&alloc::format!("{}s", sec)); }
+    
+    String::from(result.trim())
+}
+
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     use crate::parser::QuantusPayloadParser;
     
@@ -60,11 +82,19 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     match QuantusPayloadParser::parse_payload(data) {
         Ok(info) => {
             debug!(alloc::format!("QuantusPayloadParser success: {}", info));
+            let reversible_timeframe_str = if let Some(ms) = info.reversible_timeframe {
+                format_duration(ms)
+            } else {
+                String::new()
+            };
+
             Ok(ParsedQuantusTx::new(
                 info.to_address,
                 alloc::format!("{}", info.amount),
                 "0".to_string(), // Nonce not available in new format
                 "0".to_string(), // Fee not available in new format
+                info.is_reversible,
+                reversible_timeframe_str
             ))
         }
         Err(e) => {
@@ -108,8 +138,8 @@ pub fn sign_raw_tx(
 }
 
 pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
-    let _tx = QuantusTransaction::decode(&mut &data[..])
-        .map_err(|_| QuantusError::InvalidTransaction)?;
-        
-    Ok(())
+    use crate::parser::QuantusPayloadParser;
+    QuantusPayloadParser::parse_payload(&data)
+        .map(|_| ())
+        .map_err(|_| QuantusError::InvalidTransaction)
 }

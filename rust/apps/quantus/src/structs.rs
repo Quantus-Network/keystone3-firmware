@@ -5,6 +5,8 @@ impl_public_struct!(ParsedQuantusTx {
     to: String,
     amount: String,
     nonce: String,
-    fee: String
+    fee: String,
+    is_reversible: bool,
+    reversible_timeframe: String
 });
 
