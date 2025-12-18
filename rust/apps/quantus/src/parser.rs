@@ -163,7 +163,6 @@ mod tests {
     fn test_parse_real_world_balance_transfer() {
         let hex_payload = "020000ef5f320156894f0fde742921c6990bf446e82c89fae5a23e701900abcd92dfb40700282e8cd185012800007400000002000000826beefbe2be72645ff376f18de745ac196dc77637436090de4174180706118e3d3e081c6e3599f8ae31d404d9f087f50c25b4e08c35712e23470a60da5799ca00";
         let payload = hex::decode(hex_payload).unwrap();
-        let _expected_address = "qzps6MnSixszZAWiwcpjtw6uXBjWg2aEyrXBdp9thijzY1g86";
         let expected_address = "qzps6MnSixszZAWiwcpjtw6uXBjWg2aEyrXBdp9thijzY1g86";
         let expected_amount = 900000000000u128;
 
