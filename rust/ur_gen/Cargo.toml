@@ -10,5 +10,5 @@ parity-scale-codec = { workspace = true }
 parity-scale-codec-derive = { workspace = true }
 serde = { workspace = true }
 app_quantus = { path = "../apps/quantus" }
-quantus_ur = { path = "../quantus_ur" }
+quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.0.0" }
 

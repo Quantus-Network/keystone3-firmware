@@ -22,7 +22,6 @@ members = [
     "apps/iota",
     "apps/quantus",
     "ur_gen",
-    "quantus_ur",
 
     # C interface entry
     "rust_c",

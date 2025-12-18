@@ -187,7 +187,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -209,7 +209,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -226,7 +226,7 @@ dependencies = [
  "keystore",
  "rust_tools",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -269,7 +269,7 @@ dependencies = [
  "serde_json",
  "thiserror-core",
  "unicode-xid",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -319,7 +319,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -343,7 +343,7 @@ dependencies = [
  "serde_json",
  "ss58",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
  "zeroize",
 ]
 
@@ -367,7 +367,7 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror-core",
  "uint",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -440,7 +440,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "thiserror-core",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
@@ -464,7 +464,7 @@ dependencies = [
  "keystore",
  "rust_tools",
  "serde_json",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
  "zcash_vendor",
 ]
 
@@ -4074,13 +4074,14 @@ dependencies = [
 [[package]]
 name = "quantus_ur"
 version = "0.1.0"
+source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.0.0#bd87e8d7f330bbe59c922daade98978f2094c66d"
 dependencies = [
  "hex",
  "minicbor",
  "thiserror-core",
  "ur",
- "ur-parse-lib",
- "ur-registry",
+ "ur-parse-lib 0.2.0 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
+ "ur-registry 0.1.1 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
 ]
 
 [[package]]
@@ -4496,8 +4497,8 @@ dependencies = [
  "sim_qr_reader",
  "sui-types",
  "thiserror-core",
- "ur-parse-lib",
- "ur-registry",
+ "ur-parse-lib 0.2.0 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
  "zcash_vendor",
  "zeroize",
 ]
@@ -5577,13 +5578,42 @@ source = "git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52
 dependencies = [
  "hex",
  "ur",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
+]
+
+[[package]]
+name = "ur-parse-lib"
+version = "0.2.0"
+source = "git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52#12c4d08dad2e0fb7b7dd05c4c11540dccc2f63bc"
+dependencies = [
+ "hex",
+ "ur",
+ "ur-registry 0.1.1 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
 ]
 
 [[package]]
 name = "ur-registry"
 version = "0.1.1"
 source = "git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52#12c4d08dad2e0fb7b7dd05c4c11540dccc2f63bc"
+dependencies = [
+ "bs58 0.5.1",
+ "core2",
+ "hex",
+ "libflate",
+ "minicbor",
+ "paste",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "serde",
+ "thiserror-core",
+ "ur",
+]
+
+[[package]]
+name = "ur-registry"
+version = "0.1.1"
+source = "git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52#12c4d08dad2e0fb7b7dd05c4c11540dccc2f63bc"
 dependencies = [
  "bs58 0.5.1",
  "core2",
@@ -5609,7 +5639,7 @@ dependencies = [
  "parity-scale-codec-derive",
  "quantus_ur",
  "serde",
- "ur-registry",
+ "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
 [[package]]
