@@ -1,8 +1,11 @@
 use hex;
-use ur_registry::bytes::Bytes;
-use ur_registry::traits::UR;
-use ur_parse_lib::keystone_ur_decoder::probe_decode;
+use minicbor::{bytes::ByteVec, Decoder};
+use ur::ur::Kind;
+use ur_parse_lib::keystone_ur_encoder::probe_encode;
 use thiserror::Error;
+
+const UR_TYPE: &str = "quantus-sign-request";
+const MAX_FRAGMENT_LENGTH: usize = 200;
 
 #[derive(Error, Debug)]
 pub enum QuantusUrError {
@@ -10,70 +13,79 @@ pub enum QuantusUrError {
     HexError(hex::FromHexError),
     #[error("UR error: {0}")]
     UrError(String),
+    #[error("CBOR error: {0}")]
+    CborError(String),
     #[error("Decoding incomplete")]
     Incomplete,
 }
 
-/// Encodes a hex string into a UR string (or sequence of UR strings).
-/// Returns a Vector of strings. If the payload fits in one part (<= 200 bytes), returns a single element.
-/// Replaces "UR:BYTES" with "UR:QUANTUS-SIGN-REQUEST".
 pub fn encode(hex_payload: &str) -> Result<Vec<String>, QuantusUrError> {
     let payload = hex::decode(hex_payload).map_err(QuantusUrError::HexError)?;
-    let ur_payload = Bytes::new(payload);
-    // 200 is the max fragment length used in the original code
-    let mut ur_encoder = ur_payload.to_ur_encoder(200);
-    
-    let count = ur_encoder.fragment_count();
-    let mut parts = Vec::with_capacity(count);
+    let cbor = minicbor::to_vec(ByteVec::from(payload))
+        .map_err(|e| QuantusUrError::CborError(e.to_string()))?;
 
-    for _ in 0..count {
-        let part = ur_encoder.next_part().map_err(|e| QuantusUrError::UrError(e.to_string()))?;
-        let part_modified = part.to_uppercase().replace("UR:BYTES", "UR:QUANTUS-SIGN-REQUEST");
-        parts.push(part_modified);
+    let result = probe_encode(&cbor, MAX_FRAGMENT_LENGTH, UR_TYPE.to_string())
+        .map_err(|e| QuantusUrError::UrError(e.to_string()))?;
+
+    if !result.is_multi_part {
+        return Ok(vec![result.data.to_uppercase()]);
     }
-    
+
+    let mut encoder = result
+        .encoder
+        .ok_or_else(|| QuantusUrError::UrError("Multi-part but no encoder returned".to_string()))?;
+
+    let count = encoder.fragment_count();
+    let mut parts = Vec::with_capacity(count);
+    parts.push(result.data.to_uppercase());
+
+    while parts.len() < count {
+        let part = encoder
+            .next_part()
+            .map_err(|e| QuantusUrError::UrError(e.to_string()))?;
+        parts.push(part.to_uppercase());
+    }
+
     Ok(parts)
 }
 
-/// Decodes a sequence of UR parts into a hex string.
-/// Handles the "UR:QUANTUS-SIGN-REQUEST" type by substituting it back to "UR:BYTES".
 pub fn decode(ur_parts: &[String]) -> Result<String, QuantusUrError> {
     if ur_parts.is_empty() {
         return Err(QuantusUrError::UrError("No UR parts provided".to_string()));
     }
-    
-    // Process first part to initialize decoder or get single part result
-    let first_part = ur_parts[0].to_lowercase().replace("ur:quantus-sign-request", "ur:bytes");
-    
-    let result = probe_decode::<Bytes>(first_part).map_err(|e| QuantusUrError::UrError(e.to_string()))?;
-    
-    if !result.is_multi_part {
-        if let Some(bytes_item) = result.data {
-             return Ok(hex::encode(bytes_item.get_bytes()));
-        } else {
-             return Err(QuantusUrError::UrError("Single part decode failed to return data".to_string()));
+
+    let first = ur_parts[0].to_lowercase();
+    let (kind, decoded) =
+        ur::ur::decode(&first).map_err(|e| QuantusUrError::UrError(e.to_string()))?;
+
+    match kind {
+        Kind::SinglePart => {
+            let mut d = Decoder::new(&decoded);
+            let bytes = d
+                .bytes()
+                .map_err(|e| QuantusUrError::CborError(e.to_string()))?;
+            Ok(hex::encode(bytes))
         }
-    }
-    
-    // Multi-part handling
-    let mut decoder = result.decoder.ok_or_else(|| QuantusUrError::UrError("Multi-part but no decoder returned".to_string()))?;
-    
-    // Iterate ALL parts, including the first one, to ensure we trigger completion check and data extraction.
-    // Re-processing the first part is harmless for fountain codes.
-    for part in ur_parts {
-        let restored = part.to_lowercase().replace("ur:quantus-sign-request", "ur:bytes");
-        let parse_res = decoder.parse_ur::<Bytes>(restored).map_err(|e| QuantusUrError::UrError(e.to_string()))?;
-        
-        if parse_res.is_complete {
-            if let Some(bytes_item) = parse_res.data {
-                return Ok(hex::encode(bytes_item.get_bytes()));
-            } else {
-                return Err(QuantusUrError::UrError("Multi-part complete but no data".to_string()));
+        Kind::MultiPart => {
+            let mut d = ur::ur::Decoder::default();
+            for part in ur_parts {
+                d.receive(&part.to_lowercase())
+                    .map_err(|e| QuantusUrError::UrError(e.to_string()))?;
             }
+            if !d.complete() {
+                return Err(QuantusUrError::Incomplete);
+            }
+            let message = d
+                .message()
+                .map_err(|e| QuantusUrError::UrError(e.to_string()))?
+                .ok_or_else(|| QuantusUrError::UrError("No message".to_string()))?;
+            let mut dec = Decoder::new(&message);
+            let bytes = dec
+                .bytes()
+                .map_err(|e| QuantusUrError::CborError(e.to_string()))?;
+            Ok(hex::encode(bytes))
         }
     }
-    
-    Err(QuantusUrError::Incomplete)
 }
 
 #[cfg(test)]

@@ -4076,7 +4076,9 @@ name = "quantus_ur"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "minicbor",
  "thiserror-core",
+ "ur",
  "ur-parse-lib",
  "ur-registry",
 ]
