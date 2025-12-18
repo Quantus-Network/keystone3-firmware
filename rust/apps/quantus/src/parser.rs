@@ -1,10 +1,7 @@
 use parity_scale_codec::{Decode, Compact};
 use core::fmt;
 use alloc::string::{String, ToString};
-use alloc::vec;
 use alloc::format;
-use blake2::{Blake2b512, Digest};
-use base58::ToBase58;
 
 #[derive(Debug, PartialEq)]
 pub struct TransactionInfo {
@@ -33,26 +30,16 @@ pub struct QuantusPayloadParser;
 
 impl QuantusPayloadParser {
     pub fn bytes_to_ss58(bytes: &[u8]) -> String {
-        const SS58_PREFIX: u8 = 189; // Quantus SS58 prefix
-
-        // Create the payload: prefix + public key
-        let mut payload = vec![SS58_PREFIX];
-        payload.extend_from_slice(bytes);
-
-        // Calculate checksum using Blake2b512
-        let mut hasher = Blake2b512::new();
-        hasher.update(b"SS58PRE");
-        hasher.update(&payload);
-        let hash = hasher.finalize();
-
-        // Take first 2 bytes of hash as checksum
-        let checksum = &hash[..2];
-
-        // Append checksum to payload
-        payload.extend_from_slice(checksum);
-
-        // Base58 encode
-        payload.to_base58()
+        const SS58_PREFIX: u16 = 189; // Quantus SS58 prefix
+        
+        if bytes.len() != 32 {
+            panic!("AccountId32 must be 32 bytes");
+        }
+        
+        let mut account_id_bytes = [0u8; 32];
+        account_id_bytes.copy_from_slice(bytes);
+        
+        ss58::encode(&account_id_bytes, ss58::Ss58AddressFormat::Custom(SS58_PREFIX))
     }
 
     pub fn parse_payload(payload: &[u8]) -> Result<TransactionInfo, String> {
