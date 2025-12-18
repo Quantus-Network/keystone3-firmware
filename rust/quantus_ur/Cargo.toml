@@ -1,0 +1,10 @@
+[package]
+name = "quantus_ur"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hex = { workspace = true }
+ur-registry = { workspace = true }
+ur-parse-lib = { workspace = true }
+thiserror = { workspace = true }

@@ -4072,6 +4072,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "quantus_ur"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "thiserror-core",
+ "ur-parse-lib",
+ "ur-registry",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5595,6 +5605,7 @@ dependencies = [
  "hex",
  "parity-scale-codec",
  "parity-scale-codec-derive",
+ "quantus_ur",
  "serde",
  "ur-registry",
 ]

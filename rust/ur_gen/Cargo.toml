@@ -10,4 +10,5 @@ parity-scale-codec = { workspace = true }
 parity-scale-codec-derive = { workspace = true }
 serde = { workspace = true }
 app_quantus = { path = "../apps/quantus" }
+quantus_ur = { path = "../quantus_ur" }
 
