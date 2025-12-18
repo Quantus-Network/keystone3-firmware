@@ -39,6 +39,21 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
     Ok(ss58::encode(&account_id, ss58::Ss58AddressFormat::Custom(189)))
 }
 
+fn format_amount(amount: u128) -> String {
+    const DECIMALS: u128 = 1_000_000_000_000; // 10^12
+    
+    let integer_part = amount / DECIMALS;
+    let fractional_part = amount % DECIMALS;
+    
+    if fractional_part == 0 {
+        alloc::format!("{}", integer_part)
+    } else {
+        let formatted = alloc::format!("{}.{:012}", integer_part, fractional_part);
+        let trimmed = formatted.trim_end_matches('0');
+        String::from(trimmed.trim_end_matches('.'))
+    }
+}
+
 fn format_duration(ms: u64) -> String {
     let seconds = ms / 1000;
     if seconds == 0 {
@@ -77,7 +92,7 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
 
             Ok(ParsedQuantusTx::new(
                 info.to_address,
-                alloc::format!("{}", info.amount),
+                format_amount(info.amount),
                 "0".to_string(), // Nonce not available in new format
                 "0".to_string(), // Fee not available in new format
                 info.is_reversible,

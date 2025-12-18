@@ -85,7 +85,7 @@ PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
 void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
 {
     if (g_quantusData) {
-         snprintf_s((char *)indata, maxLen, "%s QTS", g_quantusData->amount ? g_quantusData->amount : "0");
+         snprintf_s((char *)indata, maxLen, "%s QUAN", g_quantusData->amount ? g_quantusData->amount : "0");
     } else {
          snprintf_s((char *)indata, maxLen, "Quantus Transaction");
     }
@@ -94,9 +94,9 @@ void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
 void GetQuantusFee(void *indata, void *param, uint32_t maxLen)
 {
     if (g_quantusData && g_quantusData->fee) {
-         snprintf_s((char *)indata, maxLen, "%s QTS", g_quantusData->fee);
+         snprintf_s((char *)indata, maxLen, "%s QUAN", g_quantusData->fee);
     } else {
-         snprintf_s((char *)indata, maxLen, "0 QTS");
+         snprintf_s((char *)indata, maxLen, "0 QUAN");
     }
 }
 
