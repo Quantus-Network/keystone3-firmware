@@ -164,6 +164,7 @@ mod tests {
         let hex_payload = "020000ef5f320156894f0fde742921c6990bf446e82c89fae5a23e701900abcd92dfb40700282e8cd185012800007400000002000000826beefbe2be72645ff376f18de745ac196dc77637436090de4174180706118e3d3e081c6e3599f8ae31d404d9f087f50c25b4e08c35712e23470a60da5799ca00";
         let payload = hex::decode(hex_payload).unwrap();
         let _expected_address = "qzps6MnSixszZAWiwcpjtw6uXBjWg2aEyrXBdp9thijzY1g86";
+        let expected_address = "qzps6MnSixszZAWiwcpjtw6uXBjWg2aEyrXBdp9thijzY1g86";
         let expected_amount = 900000000000u128;
 
         let result = QuantusPayloadParser::parse_payload(&payload);
@@ -173,15 +174,31 @@ mod tests {
         assert_eq!(tx.amount, expected_amount);
         assert_eq!(tx.is_reversible, false);
         assert_eq!(tx.reversible_timeframe, None);
-        // Note: SS58 encoding needs proper implementation for exact address match
-        // assert_eq!(tx.to_address, expected_address);
+        assert_eq!(tx.to_address, expected_address);
+    }
+
+    #[test]
+    fn test_parse_real_world_balance_transfer_2() {
+        let hex_payload = "0200007416854906f03a9dff66e3270a736c44e15970ac03a638471523a03069f276ca0700e876481755010000007400000002000000826beefbe2be72645ff376f18de745ac196dc77637436090de4174180706118e5a77ae1c95817ee664cf733fafa7baa8e6244b396a54e57a5bc414b24c52800600";
+        let payload = hex::decode(hex_payload).unwrap();
+        let expected_address = "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG";
+        let expected_amount = 100000000000u128;
+
+        let result = QuantusPayloadParser::parse_payload(&payload);
+
+        assert!(result.is_ok());
+        let tx = result.unwrap();
+        assert_eq!(tx.amount, expected_amount);
+        assert_eq!(tx.is_reversible, false);
+        assert_eq!(tx.reversible_timeframe, None);
+        assert_eq!(tx.to_address, expected_address);
     }
 
     #[test]
     fn test_parse_real_world_reversible_transfer() {
         let hex_payload = "0d04007416854906f03a9dff66e3270a736c44e15970ac03a638471523a03069f276ca0040b0464f010000000000000000000001e093040000000000d5010c00007400000002000000826beefbe2be72645ff376f18de745ac196dc77637436090de4174180706118efeebb9b31159a679a1e49ccc34d363b5d4a00b836ad4f85cbba8c6274ac2566800";
         let payload = hex::decode(hex_payload).unwrap();
-        let _expected_address = "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG";
+        let expected_address = "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG";
         let expected_amount = 1440000000000u128;
         let expected_delay = 300000u64; // 5 minutes in milliseconds
 
@@ -192,7 +209,6 @@ mod tests {
         assert_eq!(tx.amount, expected_amount);
         assert_eq!(tx.is_reversible, true);
         assert_eq!(tx.reversible_timeframe, Some(expected_delay));
-        // Note: SS58 encoding needs proper implementation for exact address match
-        // assert_eq!(tx.to_address, expected_address);
+        assert_eq!(tx.to_address, expected_address);
     }
 }
