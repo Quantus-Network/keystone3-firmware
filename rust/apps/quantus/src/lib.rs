@@ -11,6 +11,22 @@ use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 use rust_tools::debug;
 use cryptoxide::hashing::blake2b_256;
 
+pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
+    use quantus_ur::decode_bytes;
+    
+    match decode_bytes(ur_parts) {
+        Ok(bytes) => Ok(bytes),
+        Err(_) => {
+            debug!("decode_bytes failed, trying decode (hex)".to_string());
+            use quantus_ur::decode_hex;
+            let hex_str = decode_hex(ur_parts)
+                .map_err(|_| QuantusError::InvalidTransaction)?;
+            hex::decode(&hex_str)
+                .map_err(|_| QuantusError::InvalidTransaction)
+        }
+    }
+}
+
 pub mod errors;
 pub mod structs;
 pub mod metadata;
@@ -111,7 +127,7 @@ pub fn sign_raw_tx(
     path: &str,
     mnemonic: &str,
     passphrase: &str,
-) -> Result<(Vec<u8>, String)> {
+) -> Result<Vec<u8>> {
     debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
 
     // 1. Derive keys
@@ -133,8 +149,7 @@ pub fn sign_raw_tx(
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
     
-    let tx_hash = hex::encode(blake2b_256(&msg_to_sign)); // Return hash of signed message as tx_hash?
-    Ok((signature_with_pubkey, tx_hash))
+    Ok(signature_with_pubkey)
 }
 
 pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {

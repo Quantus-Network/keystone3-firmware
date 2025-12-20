@@ -338,6 +338,7 @@ dependencies = [
  "qp-poseidon-core",
  "qp-rusty-crystals-dilithium",
  "qp-rusty-crystals-hdwallet",
+ "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0)",
  "rust_tools",
  "serde",
  "serde_json",
@@ -4085,6 +4086,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "quantus_ur"
+version = "0.1.0"
+source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0#672d6a40170c3ab66bcd9c12966ff072e27cc4ac"
+dependencies = [
+ "hex",
+ "minicbor",
+ "ur",
+ "ur-parse-lib 0.2.0 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
+ "ur-registry 0.1.1 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5625,6 +5638,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "serde",
+ "thiserror 1.0.69",
  "thiserror-core",
  "ur",
 ]
@@ -5637,7 +5651,7 @@ dependencies = [
  "hex",
  "parity-scale-codec",
  "parity-scale-codec-derive",
- "quantus_ur",
+ "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.0.0)",
  "serde",
  "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]

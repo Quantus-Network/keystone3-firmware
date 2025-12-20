@@ -43,7 +43,7 @@ pub unsafe extern "C" fn quantus_sign_tx(
     let raw_bytes = bytes_ur.get_bytes();
 
     match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase) {
-        Ok((sign_result, _tx_hash)) => UREncodeResult::encode(
+        Ok(sign_result) => UREncodeResult::encode(
             sign_result,
             "bytes".to_string(),
             FRAGMENT_MAX_LENGTH_DEFAULT
