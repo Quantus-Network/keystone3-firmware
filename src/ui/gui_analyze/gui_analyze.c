@@ -6,7 +6,9 @@
 #include "gui_analyze.h"
 #include "gui_chain.h"
 #include "gui_model.h"
+#ifdef QUANTUS_VERSION
 #include "gui_quantus.h"
+#endif
 
 #ifndef COMPILE_SIMULATOR
 #include "safe_mem_lib.h"
@@ -67,6 +69,7 @@ const static GuiAnalyze_t g_analyzeArray[] = {
         NULL,
         FreeBtcMsgMemory,
     },
+#ifdef QUANTUS_VERSION
     {
         REMAPVIEW_QUANTUS,
         "{\"type\":\"container\",\"pos\":[36,0],\"size\":[408,526],\"bg_opa\":0,\"children\":[{\"type\":\"container\",\"pos\":[0,12],\"size\":[408,144],\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Value\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text\":\"Fee\",\"pos\":[24,98],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusValue\",\"pos\":[24,50],\"text_color\":16090890,\"font\":\"openSansEnLittleTitle\"},{\"type\":\"label\",\"text_func\":\"GetQuantusFee\",\"pos\":[156,98],\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,62],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Network\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusNetwork\",\"pos\":[120,16],\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,244],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"From\",\"pos\":[24,16],\"font\":\"openSansEnIllustrate\",\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusFromAddress\",\"text_width\":360,\"pos\":[24,54],\"font\":\"openSansEnIllustrate\"},{\"type\":\"label\",\"text\":\"To\",\"pos\":[24,130],\"text_opa\":144,\"font\":\"openSansEnIllustrate\"},{\"type\":\"label\",\"text_func\":\"GetQuantusToAddress\",\"text_width\":360,\"pos\":[0,8],\"align_to\":-2,\"align\":13,\"font\":\"openSansEnIllustrate\"}]},{\"type\":\"container\",\"pos\":[0,16],\"size\":[408,62],\"align_to\":-2,\"align\":13,\"bg_opa\":31,\"radius\":24,\"children\":[{\"type\":\"label\",\"text\":\"Nonce\",\"pos\":[24,16],\"text_opa\":144},{\"type\":\"label\",\"text_func\":\"GetQuantusNonce\",\"pos\":[101,16]}]}]}",
@@ -74,6 +77,7 @@ const static GuiAnalyze_t g_analyzeArray[] = {
         NULL,
         FreeQuantusMemory,
     },
+#endif
     GUI_ANALYZE_OBJ_SURPLUS
 };
 

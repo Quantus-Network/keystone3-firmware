@@ -70,7 +70,9 @@ const static CoinWalletInfo_t g_coinWalletBtn[] = {
     {CHAIN_BTC, "", &coinBtc},
 #ifdef WEB3_VERSION
     {CHAIN_ETH, "", &coinEth},
+#ifdef QUANTUS_VERSION
     {CHAIN_QUANTUS, "", &coinQuantus},
+#endif
     {CHAIN_SOL, "", &coinSol},
     {CHAIN_BNB, "", &coinBnb},
     {CHAIN_HNT, "", &coinHelium},

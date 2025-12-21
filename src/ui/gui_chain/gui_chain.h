@@ -19,10 +19,12 @@
 #include "gui_ton.h"
 #include "gui_avax.h"
 #include "gui_iota.h"
-#include "gui_quantus.h"
 #else
 #include "gui_zcash.h"
 #include "gui_monero.h"
+#endif
+#ifdef QUANTUS_VERSION
+#include "gui_quantus.h"
 #endif
 #endif
 
@@ -33,7 +35,6 @@ typedef enum {
     CHAIN_BTC,
 #ifdef WEB3_VERSION
     CHAIN_ETH,
-    CHAIN_QUANTUS,
     CHAIN_SOL,
     CHAIN_BNB,
     CHAIN_HNT,
@@ -97,6 +98,9 @@ typedef enum {
     CHAIN_ZCASH,
     CHAIN_XMR,
 #endif
+#ifdef QUANTUS_VERSION
+    CHAIN_QUANTUS,
+#endif
     CHAIN_BUTT,
 } GuiChainCoinType;
 
@@ -131,13 +135,15 @@ typedef enum {
     REMAPVIEW_TON,
     REMAPVIEW_TON_SIGNPROOF,
     REMAPVIEW_AVAX,
-    REMAPVIEW_QUANTUS,
 #endif
 
 #ifdef CYPHERPUNK_VERSION
     REMAPVIEW_ZCASH,
     REMAPVIEW_XMR_OUTPUT,
     REMAPVIEW_XMR_UNSIGNED,
+#endif
+#ifdef QUANTUS_VERSION
+    REMAPVIEW_QUANTUS,
 #endif
     REMAPVIEW_WEB_AUTH,
     REMAPVIEW_BUTT,

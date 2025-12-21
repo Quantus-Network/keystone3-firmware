@@ -27,7 +27,9 @@
 #include "simulator_mock_define.h"
 #endif
 
+#ifdef QUANTUS_VERSION
 extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphrase, char *path);
+#endif
 
 #define GENERAL_ADDRESS_INDEX_MAX                           999999999
 #define LEDGER_LIVE_ADDRESS_INDEX_MAX                       9
@@ -718,6 +720,7 @@ static void RefreshQrCode(void)
     memset(&addressDataItem, 0, sizeof(addressDataItem));
 
 #ifdef WEB3_VERSION
+#ifdef QUANTUS_VERSION
     if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
         char *password = SecretCacheGetPassword();
         if (password == NULL || password[0] == '\0') {
@@ -728,6 +731,7 @@ static void RefreshQrCode(void)
             return;
         }
     }
+#endif
 #endif
 
     ModelGetAddress(GetCurrentSelectIndex(), &addressDataItem);
@@ -958,6 +962,7 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/195'/0'/0/%u", index);
         result = tron_get_address(hdPath, xPub);
         break;
+#ifdef QUANTUS_VERSION
     case HOME_WALLET_CARD_QUANTUS: {
         char *password = SecretCacheGetPassword();
         uint8_t entropy[ENTROPY_MAX_LEN];
@@ -993,6 +998,7 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
         break;
     }
+#endif
     case HOME_WALLET_CARD_SUI:
         xPub = GetCurrentAccountPublicKey(XPUB_TYPE_SUI_0 + index);
         result = sui_generate_address(xPub);

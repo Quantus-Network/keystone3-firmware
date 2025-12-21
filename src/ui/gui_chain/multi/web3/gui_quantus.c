@@ -1,3 +1,4 @@
+#ifdef QUANTUS_VERSION
 #include "gui_quantus.h"
 #include "gui_analyze.h"
 #include "keystore.h"
@@ -232,3 +233,4 @@ void FreeQuantusMemory(void)
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     g_quantusData = NULL;
 }
+#endif

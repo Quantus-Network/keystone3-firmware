@@ -59,7 +59,7 @@ app_monero = { workspace = true, optional = true }
 app_avalanche = { workspace = true, optional = true }
 app_iota = { workspace = true, optional = true }
 app_quantus = { workspace = true, optional = true }
-quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.1.0", optional = true }
+quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.1.0", optional = true, default-features = false }
 [lib]
 crate-type = ["staticlib"]
 
@@ -113,26 +113,30 @@ multi-coins = [
     "xrp",
     "avalanche",
     "iota",
-    "quantus",
 ]
 
 btc-only = ["bitcoin"]
 
 cypherpunk = ["bitcoin", "zcash", "monero"]
 
+quantus-coin = ["quantus"]
+
 # build variants
 # production
 production-multi-coins = ["use-allocator", "multi-coins"]
 production-btc-only = ["use-allocator", "btc-only"]
 production-cypherpunk = ["use-allocator", "cypherpunk"]
+production-quantus = ["use-allocator", "quantus-coin"]
 # debug
 debug-multi-coins = ["test_cmd", "use-allocator", "multi-coins"]
 debug-btc-only = ["test_cmd", "use-allocator", "btc-only"]
 debug-cypherpunk = ["test_cmd", "use-allocator", "cypherpunk"]
+debug-quantus = ["test_cmd", "use-allocator", "quantus-coin"]
 # simulator
 simulator-multi-coins = ["simulator", "multi-coins"]
 simulator-btc-only = ["simulator", "btc-only"]
 simulator-cypherpunk = ["simulator", "cypherpunk"]
+simulator-quantus = ["simulator", "quantus-coin"]
 # make IDE happy
 default = ["simulator-multi-coins"]
 

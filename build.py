@@ -22,6 +22,7 @@ def build_firmware(environment, options, bin_type):
     is_release = environment == "production"
     is_btc_only = bin_type == "btc_only"
     is_cypherpunk = bin_type == "cypherpunk"
+    is_quantus = bin_type == "quantus"
     if not os.path.exists(build_dir):
         os.makedirs(build_dir)
 
@@ -44,6 +45,8 @@ def build_firmware(environment, options, bin_type):
         cmd += ' -DBTC_ONLY=true'
     if is_cypherpunk:
         cmd += ' -DCYPHERPUNK=true'
+    if is_quantus:
+        cmd += ' -DQUANTUS=true'
 
 
     for option in options:
