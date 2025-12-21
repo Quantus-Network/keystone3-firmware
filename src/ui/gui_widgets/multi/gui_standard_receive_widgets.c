@@ -974,9 +974,9 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
                 memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
                 if (ret == SUCCESS_CODE && mnemonic != NULL) {
                     snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0/0", index);
-                    char *pass = password ? password : "";
+                    char *passphrase = GetPassphrase(GetCurrentAccountIndex());
                     printf("quantus_get_address: path='%s', mnemonic_len=%zu\n", hdPath, strnlen_s(mnemonic, 512));
-                    result = quantus_get_address(mnemonic, pass, hdPath);
+                    result = quantus_get_address(mnemonic, passphrase, hdPath);
                     SRAM_FREE(mnemonic);
                 }
             }

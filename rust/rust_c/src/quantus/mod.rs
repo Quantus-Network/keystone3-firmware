@@ -12,6 +12,7 @@ use crate::common::errors::{ErrorCodes, RustCError};
 use crate::common::structs::{TransactionCheckResult, TransactionParseResult, SimpleResponse};
 use crate::common::types::{PtrBytes, PtrString, PtrT, PtrUR, Ptr};
 use crate::common::ur::{UREncodeResult, ViewType, FRAGMENT_MAX_LENGTH_DEFAULT};
+use ur_parse_lib::keystone_ur_encoder;
 use crate::common::utils::{convert_c_char, recover_c_char};
 use crate::{
     extract_array, extract_ptr_with_type, impl_c_ptr, impl_new_error,
@@ -19,6 +20,9 @@ use crate::{
 };
 use crate::common::free::Free;
 use crate::quantus::structs::DisplayQuantusTx;
+
+#[cfg(feature = "quantus")]
+use quantus_ur::encode_bytes;
 
 pub mod structs;
 
@@ -43,11 +47,55 @@ pub unsafe extern "C" fn quantus_sign_tx(
     let raw_bytes = bytes_ur.get_bytes();
 
     match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase) {
-        Ok(sign_result) => UREncodeResult::encode(
-            sign_result,
-            "bytes".to_string(),
-            FRAGMENT_MAX_LENGTH_DEFAULT
-        ).c_ptr(),
+        Ok(sign_result) => {
+            match encode_bytes(&sign_result) {
+                Ok(ur_parts) => {
+                    if ur_parts.is_empty() {
+                        return UREncodeResult::from(RustCError::UnexpectedError(
+                            "quantus_ur encode_bytes returned empty parts".to_string()
+                        )).c_ptr();
+                    }
+                    if ur_parts.len() == 1 {
+                        UREncodeResult::single(ur_parts[0].clone()).c_ptr()
+                    } else {
+                        use minicbor::bytes::ByteVec;
+                        let cbor_wrapped = match minicbor::to_vec(ByteVec::from(sign_result.clone())) {
+                            Ok(cbor) => cbor,
+                            Err(e) => {
+                                return UREncodeResult::from(RustCError::UnexpectedError(
+                                    alloc::format!("CBOR encoding failed: {}", e)
+                                )).c_ptr();
+                            }
+                        };
+                        let result = ur_parse_lib::keystone_ur_encoder::probe_encode(
+                            &cbor_wrapped,
+                            FRAGMENT_MAX_LENGTH_DEFAULT,
+                            "quantus-sign-request".to_string()
+                        );
+                        match result {
+                            Ok(encode_result) => {
+                                if encode_result.is_multi_part {
+                                    match encode_result.encoder {
+                                        Some(encoder) => UREncodeResult::multi(ur_parts[0].clone(), encoder).c_ptr(),
+                                        None => UREncodeResult::from(RustCError::UnexpectedError(
+                                            "encoder is none".to_string()
+                                        )).c_ptr(),
+                                    }
+                                } else {
+                                    UREncodeResult::single(ur_parts[0].clone()).c_ptr()
+                                }
+                            }
+                            Err(e) => UREncodeResult::from(RustCError::UnexpectedError(
+                                alloc::format!("encoder creation failed: {}", e)
+                            )).c_ptr(),
+                        }
+                    }
+                }
+                Err(e) => UREncodeResult::from(RustCError::UnexpectedError(
+                    alloc::format!("quantus_ur encode failed: {}", e)
+                )).c_ptr(),
+            }
+        }
         Err(e) => UREncodeResult::from(e).c_ptr(),
     }
 }
@@ -112,3 +160,131 @@ pub unsafe extern "C" fn quantus_get_address(
 }
 
 make_free_method!(TransactionParseResult<DisplayQuantusTx>);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::ur::get_next_part;
+    use crate::common::free::{free_ur_encode_result, free_ur_encode_muilt_result};
+    use crate::common::utils::recover_c_char;
+    use crate::common::types::PtrEncoder;
+    use quantus_ur::decode_bytes;
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use crate::{free_ptr_with_type};
+    use cty::c_char;
+    
+    #[no_mangle]
+    extern "C" fn PrintString(_: *mut c_char) {
+    }
+    
+    fn extract_ur_parts_from_result(result: *mut UREncodeResult) -> Vec<String> {
+        unsafe {
+            #[repr(C)]
+            struct UREncodeResultLayout {
+                is_multi_part: bool,
+                data: *mut c_char,
+                encoder: PtrEncoder,
+                error_code: u32,
+                error_message: *mut c_char,
+            }
+            
+            #[repr(C)]
+            struct UREncodeMultiResultLayout {
+                data: *mut c_char,
+                error_code: u32,
+                error_message: *mut c_char,
+            }
+            
+            let layout = &*(result as *const UREncodeResultLayout);
+            
+            if layout.error_code != 0 {
+                panic!("UREncodeResult has error: {}", 
+                    recover_c_char(layout.error_message));
+            }
+            
+            let mut parts = Vec::new();
+            let first_part = recover_c_char(layout.data);
+            parts.push(first_part);
+            
+            if layout.is_multi_part && !layout.encoder.is_null() {
+                let encoder_ref = &*(layout.encoder as *mut ur_parse_lib::keystone_ur_encoder::KeystoneUREncoder);
+                let count = encoder_ref.fragment_count();
+                
+                if count > 1 && count < 1000 {
+                    for _ in 1..count {
+                        let multi_result = get_next_part(layout.encoder);
+                        let multi_layout = &*(multi_result as *const UREncodeMultiResultLayout);
+                        if multi_layout.error_code != 0 {
+                            free_ur_encode_muilt_result(multi_result);
+                            break;
+                        }
+                        let part = recover_c_char(multi_layout.data);
+                        parts.push(part);
+                        free_ur_encode_muilt_result(multi_result);
+                    }
+                }
+            }
+            
+            parts
+        }
+    }
+    
+    #[test]
+    fn test_quantus_sign_tx_encode_decode_roundtrip() {
+        let test_payload = b"test payload for signing";
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        let mfp = [0u8; 4];
+        
+        let bytes_ur = Bytes::new(test_payload.to_vec());
+        let bytes_ptr = Box::into_raw(Box::new(bytes_ur)) as PtrUR;
+        
+        let mnemonic_cstr = cstr_core::CString::new(test_mnemonic).unwrap();
+        let passphrase_cstr = cstr_core::CString::new(test_passphrase).unwrap();
+        let path_cstr = cstr_core::CString::new(test_path).unwrap();
+        
+        let mnemonic_ptr = mnemonic_cstr.as_ptr() as PtrString;
+        let passphrase_ptr = passphrase_cstr.as_ptr() as PtrString;
+        let path_ptr = path_cstr.as_ptr() as PtrString;
+        let mfp_ptr = mfp.as_ptr() as PtrBytes;
+        
+        let result = unsafe {
+            quantus_sign_tx(
+                bytes_ptr,
+                mnemonic_ptr,
+                passphrase_ptr,
+                path_ptr,
+                mfp_ptr,
+                mfp.len() as c_int
+            )
+        };
+        
+        let ur_parts = extract_ur_parts_from_result(result);
+        assert!(!ur_parts.is_empty(), "Should have at least one UR part");
+        
+        for part in &ur_parts {
+            assert!(part.to_lowercase().starts_with("ur:quantus-sign-request"), 
+                "UR part should start with ur:quantus-sign-request, got: {}", part);
+        }
+        
+        let decoded_signature = decode_bytes(&ur_parts)
+            .expect("quantus_ur::decode_bytes should succeed");
+        
+        let expected_signature = sign_raw_tx(
+            test_payload.to_vec(),
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        assert_eq!(decoded_signature, expected_signature, 
+            "Decoded signature should match expected signature");
+        
+        unsafe {
+            free_ur_encode_result(result);
+            free_ptr_with_type!(bytes_ptr, Bytes);
+        }
+    }
+}

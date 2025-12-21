@@ -25,6 +25,8 @@ blake2 = { version = "0.10", default-features = false }
 parity-scale-codec-derive = { workspace = true }
 ur-registry = { workspace = true }
 quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.1.0" }
+ur-parse-lib = { workspace = true }
+minicbor = { workspace = true }
 
 [dev-dependencies]
 keystore = { path = "../../keystore" }

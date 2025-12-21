@@ -59,6 +59,7 @@ app_monero = { workspace = true, optional = true }
 app_avalanche = { workspace = true, optional = true }
 app_iota = { workspace = true, optional = true }
 app_quantus = { workspace = true, optional = true }
+quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.1.0", optional = true }
 [lib]
 crate-type = ["staticlib"]
 
@@ -87,7 +88,7 @@ zcash = ["dep:app_zcash", "dep:zcash_vendor"]
 monero = ["dep:app_monero"]
 avalanche = ["dep:app_avalanche"]
 iota = ["dep:app_iota"]
-quantus = ["dep:app_quantus"]
+quantus = ["dep:app_quantus", "dep:quantus_ur"]
 test_cmd = []
 
 debug-memory = ["multi-coins"]

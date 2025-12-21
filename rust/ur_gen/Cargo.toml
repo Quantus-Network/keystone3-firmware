@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-ur-registry = { workspace = true }
+ur-registry = { workspace = true, default-features = false, features = ["core"] }
 hex = { workspace = true }
 parity-scale-codec = { workspace = true }
 parity-scale-codec-derive = { workspace = true }

@@ -936,6 +936,16 @@ fn receive_ur(ur: String, decoder: &mut KeystoneURDecoder) -> URParseMultiResult
 }
 
 #[no_mangle]
+pub extern "C" fn get_fragment_count(ptr: PtrEncoder) -> u32 {
+    if ptr.is_null() {
+        return 0;
+    }
+    let keystone_ur_encoder_ptr = ptr as *mut ur_parse_lib::keystone_ur_encoder::KeystoneUREncoder;
+    let encoder = unsafe { &*keystone_ur_encoder_ptr };
+    encoder.fragment_count() as u32
+}
+
+#[no_mangle]
 pub extern "C" fn get_next_part(ptr: PtrEncoder) -> *mut UREncodeMultiResult {
     let keystone_ur_encoder_ptr = ptr as *mut ur_parse_lib::keystone_ur_encoder::KeystoneUREncoder;
     let encoder = unsafe { &mut *keystone_ur_encoder_ptr };

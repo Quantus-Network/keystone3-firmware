@@ -333,6 +333,7 @@ dependencies = [
  "cryptoxide",
  "hex",
  "keystore",
+ "minicbor",
  "parity-scale-codec",
  "parity-scale-codec-derive",
  "qp-poseidon-core",
@@ -344,6 +345,7 @@ dependencies = [
  "serde_json",
  "ss58",
  "thiserror-core",
+ "ur-parse-lib 0.2.0 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
  "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
  "zeroize",
 ]
@@ -4502,6 +4504,7 @@ dependencies = [
  "itertools 0.13.0",
  "keystore",
  "minicbor",
+ "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0)",
  "rand_core 0.6.4",
  "rsa",
  "rust_tools",

@@ -179,8 +179,8 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     do {
         char *mnemonic = NULL;
         char *password = SecretCacheGetPassword();
-        char *passphrase = password ? password : "";
-        char path[] = "m/44'/189'/0'/0/0"; // Default Quantus path
+        char *passphrase = GetPassphrase(GetCurrentAccountIndex());
+        char path[] = "m/44'/189'/0'/0/0";
 
         if (GetMnemonicType() == MNEMONIC_TYPE_BIP39) {
             uint8_t entropy[ENTROPY_MAX_LEN];
@@ -206,6 +206,15 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
             encodeResult = quantus_sign_tx(data, mnemonic, passphrase, path, mfp, sizeof(mfp));
             memset_s(mnemonic, strlen(mnemonic), 0, strlen(mnemonic));
             SRAM_FREE(mnemonic);
+        }
+        
+        if (encodeResult && encodeResult->error_code == 0) {
+            if (encodeResult->is_multi_part) {
+                uint32_t fragment_count = get_fragment_count(encodeResult->encoder);
+                printf("Quantus: QR code has %u parts\r\n", fragment_count);
+            } else {
+                printf("Quantus: QR code has 1 part (single)\r\n");
+            }
         }
         
         ClearSecretCache();

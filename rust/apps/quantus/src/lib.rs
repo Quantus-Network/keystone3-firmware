@@ -8,6 +8,7 @@ use crate::structs::ParsedQuantusTx;
 use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
 use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
+#[cfg(not(test))]
 use rust_tools::debug;
 use cryptoxide::hashing::blake2b_256;
 
@@ -17,6 +18,7 @@ pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
     match decode_bytes(ur_parts) {
         Ok(bytes) => Ok(bytes),
         Err(_) => {
+            #[cfg(not(test))]
             debug!("decode_bytes failed, trying decode (hex)".to_string());
             use quantus_ur::decode_hex;
             let hex_str = decode_hex(ur_parts)
@@ -45,6 +47,9 @@ fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 }
 
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
+
+    debug!(alloc::format!("get_address mnemonic: {}, passphrase: {}, path: {}", mnemonic, passphrase, path));
+
     let keys = get_keys(mnemonic, passphrase, path)?;
         
     let pub_key_bytes = keys.public.to_bytes();
@@ -95,10 +100,12 @@ fn format_duration(ms: u64) -> String {
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     use crate::parser::QuantusPayloadParser;
     
+    #[cfg(not(test))]
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
     
     match QuantusPayloadParser::parse_payload(data) {
         Ok(info) => {
+            #[cfg(not(test))]
             debug!(alloc::format!("QuantusPayloadParser success: {}", info));
             let reversible_timeframe_str = if let Some(ms) = info.reversible_timeframe {
                 format_duration(ms)
@@ -115,8 +122,9 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
                 reversible_timeframe_str
             ))
         }
-        Err(e) => {
-            debug!(alloc::format!("QuantusPayloadParser failed: {}", e));
+        Err(_e) => {
+            #[cfg(not(test))]
+            debug!(alloc::format!("QuantusPayloadParser failed: {}", _e));
             Err(QuantusError::InvalidTransaction)
         }
     }
@@ -128,6 +136,7 @@ pub fn sign_raw_tx(
     mnemonic: &str,
     passphrase: &str,
 ) -> Result<Vec<u8>> {
+    #[cfg(not(test))]
     debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
 
     // 1. Derive keys
@@ -135,6 +144,7 @@ pub fn sign_raw_tx(
 
     // 2. Handle payload > 256 bytes
     let msg_to_sign = if payload_to_sign.len() > 256 {
+        #[cfg(not(test))]
         debug!("Payload > 256 bytes, hashing with Blake2b-256".to_string());
         blake2b_256(&payload_to_sign).to_vec()
     } else {
@@ -149,6 +159,9 @@ pub fn sign_raw_tx(
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
     
+    #[cfg(not(test))]
+    debug!(alloc::format!("signature_with_pubkey len: {}", signature_with_pubkey.len()));
+    
     Ok(signature_with_pubkey)
 }
 
@@ -157,4 +170,187 @@ pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
     QuantusPayloadParser::parse_payload(&data)
         .map(|_| ())
         .map_err(|_| QuantusError::InvalidTransaction)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quantus_ur::{encode_bytes, decode_bytes};
+
+    #[test]
+    fn test_sign_encode_decode_roundtrip() {
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        
+        let test_payload = b"test payload for signing";
+        
+        let signature = sign_raw_tx(
+            test_payload.to_vec(),
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        assert!(!signature.is_empty(), "Signature should not be empty");
+        
+        let ur_parts = encode_bytes(&signature).expect("Encoding should succeed");
+        assert!(!ur_parts.is_empty(), "Should have at least one UR part");
+        
+        let decoded_signature = decode_bytes(&ur_parts).expect("Decoding should succeed");
+        
+        assert_eq!(signature, decoded_signature, "Decoded signature should match original");
+    }
+
+    #[test]
+    fn test_sign_encode_decode_large_payload() {
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        
+        let mut large_payload = Vec::with_capacity(300);
+        for i in 0..300 {
+            large_payload.push(i as u8);
+        }
+        
+        let signature = sign_raw_tx(
+            large_payload.clone(),
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        let ur_parts = encode_bytes(&signature).expect("Encoding should succeed");
+        
+        assert!(ur_parts.len() > 1, "Large payload should produce multiple UR parts");
+        
+        let decoded_signature = decode_bytes(&ur_parts).expect("Decoding should succeed");
+        
+        assert_eq!(signature, decoded_signature, "Decoded signature should match original");
+    }
+
+    #[test]
+    fn test_ur_parts_format() {
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        
+        let test_payload = b"test";
+        let signature = sign_raw_tx(
+            test_payload.to_vec(),
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        let ur_parts = encode_bytes(&signature).expect("Encoding should succeed");
+        
+        for part in &ur_parts {
+            assert!(part.starts_with("UR:QUANTUS-SIGN-REQUEST"), 
+                "UR part should start with UR:QUANTUS-SIGN-REQUEST, got: {}", part);
+        }
+    }
+
+    #[test]
+    fn test_production_encode_decode_roundtrip() {
+        use ur_parse_lib::keystone_ur_encoder::probe_encode;
+        use minicbor::bytes::ByteVec;
+        
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        
+        let test_payload = b"test payload for signing";
+        let signature = sign_raw_tx(
+            test_payload.to_vec(),
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        let cbor_wrapped = minicbor::to_vec(ByteVec::from(signature.clone()))
+            .expect("CBOR encoding should succeed");
+        
+        const FRAGMENT_MAX_LENGTH_DEFAULT: usize = 200;
+        let encode_result = probe_encode(
+            &cbor_wrapped,
+            FRAGMENT_MAX_LENGTH_DEFAULT,
+            "quantus-sign-request".to_string()
+        ).expect("probe_encode should succeed");
+        
+        let mut ur_parts = Vec::new();
+        ur_parts.push(encode_result.data.clone());
+        
+        if encode_result.is_multi_part {
+            if let Some(mut encoder) = encode_result.encoder {
+                let count = encoder.fragment_count();
+                while ur_parts.len() < count {
+                    let part = encoder.next_part().expect("next_part should succeed");
+                    ur_parts.push(part);
+                }
+            }
+        }
+        
+        assert!(!ur_parts.is_empty(), "Should have at least one UR part");
+        
+        for part in &ur_parts {
+            assert!(part.starts_with("ur:quantus-sign-request") || part.starts_with("UR:QUANTUS-SIGN-REQUEST"),
+                "UR part should start with ur:quantus-sign-request, got: {}", part);
+        }
+        
+        let decoded_signature = decode_bytes(&ur_parts).expect("Decoding should succeed");
+        
+        assert_eq!(signature, decoded_signature, "Decoded signature should match original");
+    }
+
+    #[test]
+    fn test_production_encode_decode_large_signature() {
+        use ur_parse_lib::keystone_ur_encoder::probe_encode;
+        use minicbor::bytes::ByteVec;
+        
+        let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        let test_passphrase = "";
+        let test_path = "m/44'/189'/0'/0/0";
+        
+        let mut large_payload = Vec::with_capacity(300);
+        for i in 0..300 {
+            large_payload.push(i as u8);
+        }
+        
+        let signature = sign_raw_tx(
+            large_payload,
+            test_path,
+            test_mnemonic,
+            test_passphrase
+        ).expect("Signing should succeed");
+        
+        let cbor_wrapped = minicbor::to_vec(ByteVec::from(signature.clone()))
+            .expect("CBOR encoding should succeed");
+        
+        const FRAGMENT_MAX_LENGTH_DEFAULT: usize = 200;
+        let encode_result = probe_encode(
+            &cbor_wrapped,
+            FRAGMENT_MAX_LENGTH_DEFAULT,
+            "quantus-sign-request".to_string()
+        ).expect("probe_encode should succeed");
+        
+        let mut ur_parts = Vec::new();
+        ur_parts.push(encode_result.data.clone());
+        
+        if encode_result.is_multi_part {
+            if let Some(mut encoder) = encode_result.encoder {
+                let count = encoder.fragment_count();
+                while ur_parts.len() < count {
+                    let part = encoder.next_part().expect("next_part should succeed");
+                    ur_parts.push(part);
+                }
+            }
+        }
+        
+        assert!(ur_parts.len() > 1, "Large signature should produce multiple UR parts");
+        
+        let decoded_signature = decode_bytes(&ur_parts).expect("Decoding should succeed");
+        
+        assert_eq!(signature, decoded_signature, "Decoded signature should match original");
+    }
 }
