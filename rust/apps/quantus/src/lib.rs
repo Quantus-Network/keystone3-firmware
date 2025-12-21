@@ -39,6 +39,11 @@ fn poseidon_hash(data: &[u8]) -> [u8; 32] {
 }
 
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
+
+    rust_tools::debug!(alloc::format!("get_keys mnemonic: {}", mnemonic));
+    rust_tools::debug!(alloc::format!("get_keys passphrase: {}", passphrase));
+    rust_tools::debug!(alloc::format!("get_keys path: {}", path));
+
     let hd_wallet = HDLattice::from_mnemonic(mnemonic, Some(passphrase))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
     
@@ -352,5 +357,43 @@ mod tests {
         let decoded_signature = decode_bytes(&ur_parts).expect("Decoding should succeed");
         
         assert_eq!(signature, decoded_signature, "Decoded signature should match original");
+    }
+
+extern crate std;
+use std::println;
+#[test]
+fn known_value_test() {
+        let mnemonic = "human snow truck virus now jaguar wall brisk shoe craft gravity diesel";
+        let passphrase = "";
+        let path = "m/44'/189189'/0'/0/0";
+        let known_account_id = "qzmuHhD8p2dvndwkbjw5htDvaptyis5rEVc7v5BmqR3pfQ7QN";
+
+        // 1. Verify Address
+        let address = get_address(mnemonic, passphrase, path).expect("get_address failed");
+        assert_eq!(address, known_account_id, "Address does not match known value");
+        
+        // 2. Verify Signing
+        let hex_payload = "0200007416854906f03a9dff66e3270a736c44e15970ac03a638471523a03069f276ca0700e876481755010000007400000002000000826beefbe2be72645ff376f18de745ac196dc77637436090de4174180706118e5a77ae1c95817ee664cf733fafa7baa8e6244b396a54e57a5bc414b24c52800600";
+        let payload = hex::decode(hex_payload).expect("hex decode failed");
+        
+        // std::println!("Quantus Payload (Hex): {}", hex_payload);
+        println!("Quantus Payload (Hex): {}", hex_payload);
+        
+        let payload_hash = blake2b_256(&payload);
+        println!("Quantus Payload Hash (Blake2b-256): {}", hex::encode(payload_hash));
+
+        // let keys = get_keys(mnemonic, passphrase, path).expect("get_keys failed");
+        // let signature = keys.secret.sign(&payload, None, None); 
+    
+        let signature = sign_raw_tx(
+            payload.clone(),
+            path,
+            mnemonic,
+            passphrase
+        ).expect("sign_raw_tx failed");
+
+        println!("Quantus signature (Hex): {}", hex::encode(&signature));
+        let sig_hash = blake2b_256(&signature);
+        println!("Quantus signature Hash (Blake2b-256): {}", hex::encode(sig_hash));
     }
 }

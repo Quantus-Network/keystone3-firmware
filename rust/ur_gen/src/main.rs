@@ -14,7 +14,9 @@ fn main() {
 
     println!("Hex payload: {}", hex_payload);
 
-    match quantus_ur::encode_hex(&hex_payload) {
+    let binary_payload = hex::decode(&hex_payload).unwrap();
+
+    match quantus_ur::encode_bytes(&binary_payload) {
         Ok(ur_parts) => {
             let ur_str = &ur_parts[0];
             println!("\nUR String: {}", ur_str);

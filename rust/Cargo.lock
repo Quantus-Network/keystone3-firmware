@@ -5636,6 +5636,7 @@ dependencies = [
 name = "ur_gen"
 version = "0.1.0"
 dependencies = [
+ "blake2",
  "hex",
  "quantus_ur",
  "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
