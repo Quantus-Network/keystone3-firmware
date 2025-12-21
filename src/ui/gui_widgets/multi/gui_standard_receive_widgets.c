@@ -1272,6 +1272,8 @@ static uint32_t* GetCosmosChainCurrentSelectIndex()
     }
 }
 
+#endif
+
 void GuiStandardReceivePasswordErrorCount(void *param)
 {
     PasswordVerifyResult_t *passwordVerifyResult = (PasswordVerifyResult_t *)param;
@@ -1290,4 +1292,3 @@ void GuiStandardReceivePasswordSuccess(void)
     // Clear password cache after displaying address for security
     ClearSecretCache();
 }
-#endif
