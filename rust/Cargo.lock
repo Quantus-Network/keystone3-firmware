@@ -339,7 +339,7 @@ dependencies = [
  "qp-poseidon-core",
  "qp-rusty-crystals-dilithium",
  "qp-rusty-crystals-hdwallet",
- "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0)",
+ "quantus_ur",
  "rust_tools",
  "serde",
  "serde_json",
@@ -4077,19 +4077,6 @@ dependencies = [
 [[package]]
 name = "quantus_ur"
 version = "0.1.0"
-source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.0.0#bd87e8d7f330bbe59c922daade98978f2094c66d"
-dependencies = [
- "hex",
- "minicbor",
- "thiserror-core",
- "ur",
- "ur-parse-lib 0.2.0 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
- "ur-registry 0.1.1 (git+https://github.com/KeystoneHQ/keystone-sdk-rust?tag=0.0.52)",
-]
-
-[[package]]
-name = "quantus_ur"
-version = "0.1.0"
 source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0#672d6a40170c3ab66bcd9c12966ff072e27cc4ac"
 dependencies = [
  "hex",
@@ -4504,7 +4491,7 @@ dependencies = [
  "itertools 0.13.0",
  "keystore",
  "minicbor",
- "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.1.0)",
+ "quantus_ur",
  "rand_core 0.6.4",
  "rsa",
  "rust_tools",
@@ -5642,7 +5629,6 @@ dependencies = [
  "prost-types",
  "serde",
  "thiserror 1.0.69",
- "thiserror-core",
  "ur",
 ]
 
@@ -5651,7 +5637,7 @@ name = "ur_gen"
 version = "0.1.0"
 dependencies = [
  "hex",
- "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.0.0)",
+ "quantus_ur",
  "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
