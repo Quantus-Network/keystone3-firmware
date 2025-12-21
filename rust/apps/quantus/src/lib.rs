@@ -31,7 +31,6 @@ pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
 
 pub mod errors;
 pub mod structs;
-pub mod metadata;
 pub mod parser;
 
 fn poseidon_hash(data: &[u8]) -> [u8; 32] {
