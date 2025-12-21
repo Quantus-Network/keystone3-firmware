@@ -5650,12 +5650,8 @@ dependencies = [
 name = "ur_gen"
 version = "0.1.0"
 dependencies = [
- "app_quantus",
  "hex",
- "parity-scale-codec",
- "parity-scale-codec-derive",
  "quantus_ur 0.1.0 (git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.0.0)",
- "serde",
  "ur-registry 0.1.1 (git+https://git@github.com/KeystoneHQ/keystone-sdk-rust.git?tag=0.0.52)",
 ]
 
