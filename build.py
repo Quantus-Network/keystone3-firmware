@@ -128,6 +128,17 @@ def build_img_to_c_file(force=False, skip_image=False):
 
 if __name__ == '__main__':
     args = argParser.parse_args()
+    
+    # Define valid build types
+    valid_build_types = ["btc_only", "cypherpunk", "quantus", "general"]
+    
+    # Validate build type if provided
+    if args.type:
+        if args.type not in valid_build_types:
+            print(f"Error: Invalid build type '{args.type}'")
+            print(f"Valid build types are: {', '.join(valid_build_types)}")
+            exit(1)
+    
     print("=============================================")
     print("--")
     print(f"Building firmware for { args.environment if args.environment else 'dev'}")
