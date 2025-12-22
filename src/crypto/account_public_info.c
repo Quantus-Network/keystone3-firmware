@@ -535,6 +535,11 @@ static const ChainItem_t g_chainTable[] = {
     {XPUB_TYPE_MONERO_PVK_0,          MONERO_PVK,     "monero_pvk_0",            ""                 },
 #endif
 
+#ifdef QUANTUS_VERSION
+    // check if we can set a custom type here since we are not SECP256K1
+    {XPUB_TYPE_QUANTUS,               SECP256K1,    "quantus",                  "M/44'/189189'/0'/0/0"},
+#endif
+
 #ifdef BTC_ONLY
     {XPUB_TYPE_BTC_TEST,                SECP256K1,      "btc_nested_segwit_test",   "M/49'/1'/0'"   },
     {XPUB_TYPE_BTC_LEGACY_TEST,         SECP256K1,      "btc_legacy_test",          "M/44'/1'/0'"   },
@@ -944,6 +949,9 @@ int32_t AccountPublicSavePublicInfo(uint8_t accountIndex, const char *password, 
                     xPubResult = ProcessKeyType(seed, seedLen, g_chainTable[i].cryptoKey, g_chainTable[i].path, icarusMasterKey, ledgerBitbox02Key);
                 }
 #endif
+#ifdef QUANTUS_VERSION
+                xPubResult = ProcessKeyType(seed, seedLen, g_chainTable[i].cryptoKey, g_chainTable[i].path, icarusMasterKey, ledgerBitbox02Key);
+#endif
 #ifdef WEB3_VERSION
                 if (g_chainTable[i].cryptoKey == BIP32_ED25519 && isSlip39) {
                     xPubResult = cardano_get_pubkey_by_slip23(seed, seedLen, g_chainTable[i].path);
@@ -1110,6 +1118,9 @@ int32_t TempAccountPublicInfo(uint8_t accountIndex, const char *password, bool s
             } else {
                 xPubResult = ProcessKeyType(seed, seedLen, g_chainTable[i].cryptoKey, g_chainTable[i].path, icarusMasterKey, ledgerBitbox02Key);
             }
+#endif
+#ifdef QUANTUS_VERSION
+            xPubResult = ProcessKeyType(seed, seedLen, g_chainTable[i].cryptoKey, g_chainTable[i].path, icarusMasterKey, ledgerBitbox02Key);
 #endif
 #ifdef WEB3_VERSION
             if (g_chainTable[i].cryptoKey == BIP32_ED25519 && isSlip39) {

@@ -46,8 +46,8 @@ static uint8_t g_currentPage = 0;
 static bool g_isScrolling = false;
 
 static WalletState_t g_walletState[HOME_WALLET_CARD_BUTT] = {
-    {HOME_WALLET_CARD_BTC, false, "BTC", true}
-    HOME_WALLET_STATE_SURPLUS
+    {HOME_WALLET_CARD_BTC, false, "BTC", true},
+    HOME_WALLET_STATE_SURPLUS,
 };
 static WalletState_t g_walletBakState[HOME_WALLET_CARD_BUTT] = {0};
 
@@ -57,8 +57,8 @@ static const ChainCoinCard_t g_coinCardArray[HOME_WALLET_CARD_BUTT] = {
         .coin = "BTC",
         .chain = "Bitcoin",
         .icon = &coinBtc,
-    }
-    HOME_WALLET_CARD_SURPLUS
+    },
+    HOME_WALLET_CARD_SURPLUS,
 };
 
 static void CoinDealHandler(HOME_WALLET_CARD_ENUM coin);
