@@ -19,12 +19,13 @@
 #include "gui_ton.h"
 #include "gui_avax.h"
 #include "gui_iota.h"
-#else
+#endif
+#ifdef CYPHERPUNK_VERSION
 #include "gui_zcash.h"
 #include "gui_monero.h"
 #endif
 #ifdef QUANTUS_VERSION
-#include "gui_quantus.h"
+#include "multi/quantus/gui_quantus.h"
 #endif
 #endif
 

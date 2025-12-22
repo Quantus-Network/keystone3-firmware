@@ -7,7 +7,7 @@
 #include "gui_chain.h"
 #include "gui_model.h"
 #ifdef QUANTUS_VERSION
-#include "gui_quantus.h"
+#include "multi/quantus/gui_quantus.h"
 #endif
 
 #ifndef COMPILE_SIMULATOR
@@ -25,6 +25,18 @@ typedef void (*SetLvglFlagFunc)(lv_obj_t *obj, lv_obj_flag_t);
 #include "gui.h"
 #include "librust_c.h"
 #include "user_memory.h"
+#ifdef QUANTUS_VERSION
+#include "multi/quantus/gui_quantus_analyze.h"
+#endif
+#ifdef CYPHERPUNK_VERSION
+#include "multi/cypherpunk/gui_cypherpunk_analyze.h"
+#endif
+#ifdef WEB3_VERSION
+#include "multi/web3/gui_general_analyze.h"
+#endif
+#ifdef BTC_ONLY
+#include "btc_only/gui_btc_only_analyze.h"
+#endif
 typedef struct {
     GuiRemapViewType index;
     const char *config;

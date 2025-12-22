@@ -7,14 +7,19 @@
 #include "gui_attention_hintbox.h"
 #include "web3/gui_general_home_widgets.h"
 #include "cypherpunk/gui_cypherpunk_home_widgets.h"
+#include "quantus/gui_quantus_home_widgets.h"
 #ifdef COMPILE_SIMULATOR
 #include "gui_pending_hintbox.h"
 #endif
 
 typedef enum {
-    HOME_WALLET_CARD_BTC,
-    HOME_WIDGETS_SURPLUS_CARD_ENUM,
-    HOME_WALLET_CARD_BUTT,      // This represents the end of the array (the number of arrays) and needs to be placed at the end.
+    HOME_WALLET_CARD_BTC
+#ifdef QUANTUS_VERSION
+    HOME_WIDGETS_SURPLUS_CARD_ENUM
+#else
+    , HOME_WIDGETS_SURPLUS_CARD_ENUM
+#endif
+    , HOME_WALLET_CARD_BUTT      // This represents the end of the array (the number of arrays) and needs to be placed at the end.
 } HOME_WALLET_CARD_ENUM;
 
 typedef struct {

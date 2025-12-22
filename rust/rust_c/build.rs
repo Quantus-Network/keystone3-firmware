@@ -22,12 +22,20 @@ fn main() {
         "simulator-cypherpunk",
         #[cfg(feature = "production-cypherpunk")]
         "production-cypherpunk",
+        #[cfg(feature = "simulator-quantus")]
+        "simulator-quantus",
+        #[cfg(feature = "debug-quantus")]
+        "debug-quantus",
+        #[cfg(feature = "production-quantus")]
+        "production-quantus",
     ];
 
     //feature toggle
     config.after_includes = config.after_includes.map(|mut v| {
         #[cfg(feature = "cypherpunk")]
         v.push_str("#define BUILD_CYBERPUNK\n");
+        #[cfg(feature = "quantus-coin")]
+        v.push_str("#define BUILD_QUANTUS\n");
         #[cfg(feature = "multi-coins")]
         v.push_str("#define BUILD_MULTI_COINS\n");
 
@@ -71,6 +79,8 @@ fn main() {
         v.push_str("#define FEATURE_ZCASH\n");
         #[cfg(feature = "monero")]
         v.push_str("#define FEATURE_MONERO\n");
+        #[cfg(feature = "quantus")]
+        v.push_str("#define FEATURE_QUANTUS\n");
         v
     });
     assert!(!features.is_empty(), "No build variant enabled");

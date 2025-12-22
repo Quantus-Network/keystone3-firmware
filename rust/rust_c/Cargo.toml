@@ -119,7 +119,7 @@ btc-only = ["bitcoin"]
 
 cypherpunk = ["bitcoin", "zcash", "monero"]
 
-quantus-coin = ["quantus"]
+quantus-coin = ["quantus", "bitcoin"]
 
 # build variants
 # production

@@ -33,9 +33,6 @@ bool CheckViewTypeIsAllow(uint8_t viewType)
     case REMAPVIEW_ADA_CATALYST:
     case REMAPVIEW_APT:
     case REMAPVIEW_AVAX:
-#ifdef QUANTUS_VERSION
-    case REMAPVIEW_QUANTUS:
-#endif
         return true;
     default:
         return false;
@@ -43,6 +40,9 @@ bool CheckViewTypeIsAllow(uint8_t viewType)
 #endif
 #ifdef CYPHERPUNK_VERSION
     return ViewTypeReMap(viewType) == REMAPVIEW_BTC || ViewTypeReMap(viewType) == REMAPVIEW_BTC_MESSAGE;
+#endif
+#ifdef QUANTUS_VERSION
+    return ViewTypeReMap(viewType) == REMAPVIEW_QUANTUS;
 #endif
     return false;
 }
@@ -67,9 +67,6 @@ static const ViewHandlerEntry g_viewHandlerMap[] = {
 
     // avax
     {AvaxTx, GuiGetAvaxSignQrCodeData, GuiGetAvaxSignUrDataUnlimited, GuiGetAvaxCheckResult, CHAIN_AVAX, REMAPVIEW_AVAX},
-#ifdef QUANTUS_VERSION
-    {QuantusTx, GuiGetQuantusSignQrCodeData, NULL, GuiGetQuantusCheckResult, CHAIN_QUANTUS, REMAPVIEW_QUANTUS},
-#endif
 
     // must get from GuiGetCosmosTxChain
     {CosmosTx, GuiGetCosmosSignQrCodeData, GuiGetCosmosSignQrCodeData, GuiGetCosmosCheckResult, CHAIN_ATOM, REMAPVIEW_COSMOS},
@@ -109,6 +106,10 @@ static const ViewHandlerEntry g_viewHandlerMap[] = {
     {ZcashTx, GuiGetZcashSignQrCodeData, NULL, GuiGetZcashCheckResult, CHAIN_ZCASH, REMAPVIEW_ZCASH},
     {XmrOutput, GuiGetMoneroKeyimagesQrCodeData, NULL, GuiGetMoneroOutputCheckResult, CHAIN_XMR, REMAPVIEW_XMR_OUTPUT},
     {XmrTxUnsigned, GuiGetMoneroSignedTransactionQrCodeData, NULL, GuiGetMoneroUnsignedTxCheckResult, CHAIN_XMR, REMAPVIEW_XMR_UNSIGNED},
+#endif
+
+#ifdef QUANTUS_VERSION
+    {QuantusTx, GuiGetQuantusSignQrCodeData, NULL, GuiGetQuantusCheckResult, CHAIN_QUANTUS, REMAPVIEW_QUANTUS},
 #endif
 };
 

@@ -4,7 +4,9 @@
 #include "gui.h"
 #include "gui_lock_widgets.h"
 #include "gui_home_widgets.h"
+#ifdef WEB3_VERSION
 #include "gui_wallet.h"
+#endif
 
 /* DEFINES */
 
