@@ -166,6 +166,8 @@ pub fn sign_raw_tx(
     let signature = keys.secret.sign(&msg_to_sign, None, None)
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
+    debug!(alloc::format!("Quantus signature hash: {}", hex::encode(blake2b_256(&signature))));
+
     // 4. Concatenate Signature + Public Key
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());

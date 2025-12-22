@@ -243,10 +243,6 @@ typedef enum {
     XPUB_TYPE_MONERO_PVK_0,
 #endif
 
-#ifdef QUANTUS_VERSION
-    XPUB_TYPE_QUANTUS,
-#endif
-
 #ifdef BTC_ONLY
     XPUB_TYPE_BTC_TEST,
     XPUB_TYPE_BTC_LEGACY_TEST,

@@ -1,4 +1,4 @@
-#ifdef QUANTUS_VERSION
+#ifdef WEB3_VERSION
 #include "gui_quantus.h"
 #include "gui_analyze.h"
 #include "keystore.h"

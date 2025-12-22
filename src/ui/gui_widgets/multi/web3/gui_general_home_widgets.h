@@ -2,24 +2,8 @@
 #ifndef _GUI_GENERAL_HOME_WIDGETS_H
 #define _GUI_GENERAL_HOME_WIDGETS_H
 
-#ifdef QUANTUS_VERSION
-#define QUANTUS_HOME_WIDGETS_ENUM HOME_WALLET_CARD_QUANTUS,
-#define QUANTUS_HOME_WALLET_STATE {HOME_WALLET_CARD_QUANTUS, false, "QNT", true},
-#define QUANTUS_HOME_WALLET_CARD \
-        {                                      \
-            .index = HOME_WALLET_CARD_QUANTUS, \
-            .coin = "QUAN",                    \
-            .chain = "Quantus",                \
-            .icon = &coinQuantus,              \
-        },
-#else
-#define QUANTUS_HOME_WIDGETS_ENUM
-#define QUANTUS_HOME_WALLET_STATE
-#define QUANTUS_HOME_WALLET_CARD
-#endif
-
 #define HOME_WIDGETS_SURPLUS_CARD_ENUM HOME_WALLET_CARD_ETH,     \
-                                       QUANTUS_HOME_WIDGETS_ENUM \
+                                       HOME_WALLET_CARD_QUANTUS, \
                                        HOME_WALLET_CARD_SOL,     \
                                        HOME_WALLET_CARD_BNB,     \
                                        HOME_WALLET_CARD_HNT,     \
@@ -77,7 +61,7 @@
 
 #define HOME_WALLET_STATE_SURPLUS                         \
     {HOME_WALLET_CARD_ETH, false, "ETH", true},           \
-    QUANTUS_HOME_WALLET_STATE                             \
+    {HOME_WALLET_CARD_QUANTUS, false, "QNT", true},       \
         {HOME_WALLET_CARD_SOL, false, "SOL", true},       \
         {HOME_WALLET_CARD_BNB, false, "BNB", false},      \
         {HOME_WALLET_CARD_HNT, false, "HNT", true},       \
@@ -143,7 +127,12 @@
             .chain = "Ethereum",               \
             .icon = &coinEth,                  \
         },                                     \
-        QUANTUS_HOME_WALLET_CARD               \
+        {                                      \
+            .index = HOME_WALLET_CARD_QUANTUS, \
+            .coin = "QNT",                     \
+            .chain = "Quantus",                \
+            .icon = &coinQuantus,              \
+        },                                     \
         {                                      \
             .index = HOME_WALLET_CARD_SOL,     \
             .coin = "SOL",                     \

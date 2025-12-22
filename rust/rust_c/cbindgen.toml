@@ -7,7 +7,7 @@ language = "C"
 [defines]
 "feature = multi-coins" = "BUILD_MULTI_COINS"
 "feature = cypherpunk" = "BUILD_CYBERPUNK"
-"feature = quantus-coin" = "BUILD_QUANTUS"
+# "feature = quantus-coin" = "BUILD_QUANTUS"
 
 "feature = aptos" = "FEATURE_APTOS"
 "feature = arweave" = "FEATURE_ARWEAVE"

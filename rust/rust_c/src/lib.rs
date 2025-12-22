@@ -34,8 +34,8 @@ mod avalanche;
 #[cfg(feature = "iota")]
 #[allow(unused)]
 mod iota;
-#[cfg(feature = "quantus")]
-#[allow(unused)]
+// #[cfg(feature = "quantus")]
+// #[allow(unused)]
 mod quantus;
 
 #[cfg(feature = "bitcoin")]

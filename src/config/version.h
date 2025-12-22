@@ -22,10 +22,6 @@
 #define SOFTWARE_VERSION_SUFFIX             " - BTC"
 #endif
 
-#ifdef QUANTUS_VERSION
-#define SOFTWARE_VERSION_SUFFIX             " - Quantus"
-#endif
-
 #if SOFTWARE_VERSION_MAJOR > 99 || SOFTWARE_VERSION_MINOR > 99 || SOFTWARE_VERSION_BUILD > 99
 #error "Invalid software version"
 #endif

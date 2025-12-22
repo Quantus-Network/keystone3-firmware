@@ -535,11 +535,6 @@ static const ChainItem_t g_chainTable[] = {
     {XPUB_TYPE_MONERO_PVK_0,          MONERO_PVK,     "monero_pvk_0",            ""                 },
 #endif
 
-#ifdef QUANTUS_VERSION
-    // check if we can set a custom type here since we are not SECP256K1
-    {XPUB_TYPE_QUANTUS,               SECP256K1,    "quantus",                  "M/44'/189189'/0'/0/0"},
-#endif
-
 #ifdef BTC_ONLY
     {XPUB_TYPE_BTC_TEST,                SECP256K1,      "btc_nested_segwit_test",   "M/49'/1'/0'"   },
     {XPUB_TYPE_BTC_LEGACY_TEST,         SECP256K1,      "btc_legacy_test",          "M/44'/1'/0'"   },

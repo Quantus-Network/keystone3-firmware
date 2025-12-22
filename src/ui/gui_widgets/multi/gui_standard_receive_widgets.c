@@ -27,9 +27,7 @@
 #include "simulator_mock_define.h"
 #endif
 
-#ifdef QUANTUS_VERSION
 extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphrase, char *path);
-#endif
 
 #define GENERAL_ADDRESS_INDEX_MAX                           999999999
 #define LEDGER_LIVE_ADDRESS_INDEX_MAX                       9
@@ -94,7 +92,6 @@ typedef struct {
     char path[32];
 } PathItem_t;
 
-static const char* GetChainNameForAccount(HOME_WALLET_CARD_ENUM chainCard);
 static void GuiCreateMoreWidgets(lv_obj_t *parent);
 static void GuiStandardReceiveGotoTile(StandardReceiveTile tile);
 static void GuiCreateQrCodeWidget(lv_obj_t *parent);
@@ -195,16 +192,6 @@ __attribute__((weak)) bool IsCosmosChain(HOME_WALLET_CARD_ENUM index)
 static void JumpToAccountHandler(lv_event_t *e)
 {
     GuiCreateGotoAddressWidgets(g_standardReceiveWidgets.tileSwitchAccount);
-}
-
-static const char* GetChainNameForAccount(HOME_WALLET_CARD_ENUM chainCard)
-{
-#ifdef QUANTUS_VERSION
-    if (chainCard == HOME_WALLET_CARD_QUANTUS) {
-        return "quantus";
-    }
-#endif
-    return GetCoinCardByIndex(chainCard)->coin;
 }
 
 static void CloseSwitchAddressHandler(lv_event_t *e)
@@ -596,13 +583,13 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
         lv_obj_align(tempObj, LV_ALIGN_CENTER, 150, 0);
     }
 
-    const char* chainName = GetChainNameForAccount(g_chainCard);
-    if (!GetFirstReceive(chainName)) {
+    const char* coin = GetCoinCardByIndex(g_chainCard)->coin;
+    if (!GetFirstReceive(coin)) {
         char attentionText[1024];
         GetAttentionText(attentionText);
         g_standardReceiveWidgets.attentionCont = GuiCreateConfirmHintBox(&imgInformation, _("Attention"), attentionText, NULL, _("got_it"), WHITE_COLOR_OPA20);
         lv_obj_add_event_cb(GuiGetHintBoxRightBtn(g_standardReceiveWidgets.attentionCont), CloseAttentionHandler, LV_EVENT_CLICKED, NULL);
-        SetFirstReceive(chainName, true);
+        SetFirstReceive(coin, true);
     }
 }
 
@@ -730,7 +717,7 @@ static void RefreshQrCode(void)
     AddressDataItem_t addressDataItem;
     memset(&addressDataItem, 0, sizeof(addressDataItem));
 
-#ifdef QUANTUS_VERSION
+#ifdef WEB3_VERSION
     if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
         char *password = SecretCacheGetPassword();
         if (password == NULL || password[0] == '\0') {
@@ -754,12 +741,6 @@ static void RefreshQrCode(void)
     } else {
         printf("ERROR: Address is empty for chain %d!\n", g_chainCard);
     }
-
-#ifdef QUANTUS_VERSION
-    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
-        lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressDataItem.address);
-    }
-#endif
 
 #ifdef CYPHERPUNK_VERSION
     if (g_chainCard == HOME_WALLET_CARD_ZEC) {
@@ -969,8 +950,15 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
     }
 #endif
 
-#ifdef QUANTUS_VERSION
-    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+#ifdef WEB3_VERSION
+    char *xPub = NULL;
+    switch (g_chainCard) {
+    case HOME_WALLET_CARD_TRX:
+        xPub = GetCurrentAccountPublicKey(XPUB_TYPE_TRX);
+        snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/195'/0'/0/%u", index);
+        result = tron_get_address(hdPath, xPub);
+        break;
+    case HOME_WALLET_CARD_QUANTUS: {
         char *password = SecretCacheGetPassword();
         uint8_t entropy[ENTROPY_MAX_LEN];
         uint8_t entropyLen = 0;
@@ -1003,17 +991,8 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
             }
         }
         memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-    }
-#endif
-
-#ifdef WEB3_VERSION
-    char *xPub = NULL;
-    switch (g_chainCard) {
-    case HOME_WALLET_CARD_TRX:
-        xPub = GetCurrentAccountPublicKey(XPUB_TYPE_TRX);
-        snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/195'/0'/0/%u", index);
-        result = tron_get_address(hdPath, xPub);
         break;
+    }
     case HOME_WALLET_CARD_SUI:
         xPub = GetCurrentAccountPublicKey(XPUB_TYPE_SUI_0 + index);
         result = sui_generate_address(xPub);
@@ -1195,7 +1174,7 @@ static void SetCurrentSelectIndex(uint32_t selectIndex)
         }
     }
 #endif
-    SetAccountReceiveIndex(GetChainNameForAccount(g_chainCard), selectIndex);
+    SetAccountReceiveIndex(GetCoinCardByIndex(g_chainCard)->coin, selectIndex);
 }
 
 static uint32_t GetCurrentSelectIndex()
@@ -1203,7 +1182,7 @@ static uint32_t GetCurrentSelectIndex()
     if (!IsAccountSwitchable()) {
         return 0;
     }
-    return GetAccountReceiveIndex(GetChainNameForAccount(g_chainCard));
+    return GetAccountReceiveIndex(GetCoinCardByIndex(g_chainCard)->coin);
 }
 
 #ifdef WEB3_VERSION
@@ -1287,8 +1266,6 @@ static uint32_t* GetCosmosChainCurrentSelectIndex()
     }
 }
 
-#endif
-
 void GuiStandardReceivePasswordErrorCount(void *param)
 {
     PasswordVerifyResult_t *passwordVerifyResult = (PasswordVerifyResult_t *)param;
@@ -1307,3 +1284,4 @@ void GuiStandardReceivePasswordSuccess(void)
     // Clear password cache after displaying address for security
     ClearSecretCache();
 }
+#endif

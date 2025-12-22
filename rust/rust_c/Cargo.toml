@@ -97,6 +97,7 @@ multi-coins = [
     "aptos",
     "arweave",
     "bch",
+    "quantus",
     "bitcoin",
     "cardano",
     "cosmos",
@@ -119,24 +120,24 @@ btc-only = ["bitcoin"]
 
 cypherpunk = ["bitcoin", "zcash", "monero"]
 
-quantus-coin = ["quantus", "bitcoin"]
+# quantus-coin = ["quantus", "bitcoin"]
 
 # build variants
 # production
 production-multi-coins = ["use-allocator", "multi-coins"]
 production-btc-only = ["use-allocator", "btc-only"]
 production-cypherpunk = ["use-allocator", "cypherpunk"]
-production-quantus = ["use-allocator", "quantus-coin"]
+# production-quantus = ["use-allocator", "quantus-coin"]
 # debug
 debug-multi-coins = ["test_cmd", "use-allocator", "multi-coins"]
 debug-btc-only = ["test_cmd", "use-allocator", "btc-only"]
 debug-cypherpunk = ["test_cmd", "use-allocator", "cypherpunk"]
-debug-quantus = ["test_cmd", "use-allocator", "quantus-coin"]
+# debug-quantus = ["test_cmd", "use-allocator", "quantus-coin"]
 # simulator
 simulator-multi-coins = ["simulator", "multi-coins"]
 simulator-btc-only = ["simulator", "btc-only"]
 simulator-cypherpunk = ["simulator", "cypherpunk"]
-simulator-quantus = ["simulator", "quantus-coin"]
+# simulator-quantus = ["simulator", "quantus-coin"]
 # make IDE happy
 default = ["simulator-multi-coins"]
 

@@ -54,9 +54,7 @@ static SetChainData_t g_chainViewArray[] = {
     {REMAPVIEW_TON, (SetChainDataFunc)GuiSetTonUrData},
     {REMAPVIEW_TON_SIGNPROOF, (SetChainDataFunc)GuiSetTonUrData},
     {REMAPVIEW_AVAX, (SetChainDataFunc)GuiSetAvaxUrData},
-#ifdef QUANTUS_VERSION
     {REMAPVIEW_QUANTUS, (SetChainDataFunc)GuiSetQuantusUrData},
-#endif
     {REMAPVIEW_IOTA, (SetChainDataFunc)GuiSetIotaUrData},
     {REMAPVIEW_IOTA_SIGN_MESSAGE_HASH, (SetChainDataFunc)GuiSetIotaUrData},
 #endif
