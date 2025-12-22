@@ -6,7 +6,6 @@ use alloc::vec::Vec;
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
 use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
-use qp_rusty_crystals_hdwallet::HDLattice;
 use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
 #[cfg(not(test))]
 use rust_tools::debug;
@@ -32,6 +31,7 @@ pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
 pub mod errors;
 pub mod structs;
 pub mod parser;
+pub mod ss58;
 
 fn poseidon_hash(data: &[u8]) -> [u8; 32] {
     hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
@@ -39,19 +39,20 @@ fn poseidon_hash(data: &[u8]) -> [u8; 32] {
 
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 
+    #[cfg(not(test))]
     rust_tools::debug!(alloc::format!("get_keys mnemonic: {}", mnemonic));
+    #[cfg(not(test))]
     rust_tools::debug!(alloc::format!("get_keys passphrase: {}", passphrase));
+    #[cfg(not(test))]
     rust_tools::debug!(alloc::format!("get_keys path: {}", path));
 
-    let hd_wallet = HDLattice::from_mnemonic(mnemonic, Some(passphrase))
-        .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
-    
-    hd_wallet.generate_derived_keys(path)
+    qp_rusty_crystals_hdwallet::derive_key_from_mnemonic(mnemonic, Some(passphrase), path)
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))
 }
 
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
 
+    #[cfg(not(test))]
     debug!(alloc::format!("get_address mnemonic: {}, passphrase: {}, path: {}", mnemonic, passphrase, path));
 
     let keys = get_keys(mnemonic, passphrase, path)?;
@@ -60,8 +61,8 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
     
     let account_id = poseidon_hash(&pub_key_bytes);
     
-    // Use ss58 crate to encode. 
-    Ok(ss58::encode(&account_id, ss58::Ss58AddressFormat::Custom(189)))
+    // Use custom ss58 encoding
+    Ok(ss58::encode(&account_id, 189))
 }
 
 fn format_amount(amount: u128) -> String {
@@ -105,10 +106,12 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     use crate::parser::QuantusPayloadParser;
     
     #[cfg(not(test))]
+    #[cfg(not(test))]
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
     
     match QuantusPayloadParser::parse_payload(data) {
         Ok(info) => {
+            #[cfg(not(test))]
             #[cfg(not(test))]
             debug!(alloc::format!("QuantusPayloadParser success: {}", info));
             let reversible_timeframe_str = if let Some(ms) = info.reversible_timeframe {
@@ -128,6 +131,7 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
         }
         Err(_e) => {
             #[cfg(not(test))]
+            #[cfg(not(test))]
             debug!(alloc::format!("QuantusPayloadParser failed: {}", _e));
             Err(QuantusError::InvalidTransaction)
         }
@@ -141,6 +145,7 @@ pub fn sign_raw_tx(
     passphrase: &str,
 ) -> Result<Vec<u8>> {
     #[cfg(not(test))]
+    #[cfg(not(test))]
     debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
 
     // 1. Derive keys
@@ -149,6 +154,7 @@ pub fn sign_raw_tx(
     // 2. Handle payload > 256 bytes
     let msg_to_sign = if payload_to_sign.len() > 256 {
         #[cfg(not(test))]
+        #[cfg(not(test))]
         debug!("Payload > 256 bytes, hashing with Blake2b-256".to_string());
         blake2b_256(&payload_to_sign).to_vec()
     } else {
@@ -156,13 +162,15 @@ pub fn sign_raw_tx(
     };
 
     // 3. Sign
-    // Dilithium sign signature: fn sign(&self, msg: &[u8], ctx: Option<&[u8]>, rnd: Option<[u8; 32]>) -> [u8; SIG_BYTES]
-    let signature = keys.secret.sign(&msg_to_sign, None, None); 
-    
+    // Dilithium sign signature: fn sign(&self, msg: &[u8], ctx: Option<&[u8]>, rnd: Option<[u8; 32]>) -> Result<[u8; SIG_BYTES], SignatureError>
+    let signature = keys.secret.sign(&msg_to_sign, None, None)
+        .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
+
     // 4. Concatenate Signature + Public Key
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
     
+    #[cfg(not(test))]
     #[cfg(not(test))]
     debug!(alloc::format!("signature_with_pubkey len: {}", signature_with_pubkey.len()));
     

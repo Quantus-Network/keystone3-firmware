@@ -31,15 +31,15 @@ pub struct QuantusPayloadParser;
 impl QuantusPayloadParser {
     pub fn bytes_to_ss58(bytes: &[u8]) -> String {
         const SS58_PREFIX: u16 = 189; // Quantus SS58 prefix
-        
+
         if bytes.len() != 32 {
             panic!("AccountId32 must be 32 bytes");
         }
-        
+
         let mut account_id_bytes = [0u8; 32];
         account_id_bytes.copy_from_slice(bytes);
-        
-        ss58::encode(&account_id_bytes, ss58::Ss58AddressFormat::Custom(SS58_PREFIX))
+
+        crate::ss58::encode(&account_id_bytes, SS58_PREFIX)
     }
 
     pub fn parse_payload(payload: &[u8]) -> Result<TransactionInfo, String> {
