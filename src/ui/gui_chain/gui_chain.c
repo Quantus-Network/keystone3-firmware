@@ -2,6 +2,7 @@
 #include "gui_chain.h"
 #include "keystore.h"
 #include "user_memory.h"
+#include "screen_manager.h"
 
 typedef TransactionCheckResult *(*CheckUrResultHandler)(void);
 
