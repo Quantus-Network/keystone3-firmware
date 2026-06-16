@@ -235,7 +235,7 @@ mod tests {
         let test_payload = b"test payload for signing";
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189189'/0'/0/0";
+        let test_path = "m/44'/189189'/0'/0'/0'";
         let mfp = [0u8; 4];
         
         let bytes_ur = Bytes::new(test_payload.to_vec());

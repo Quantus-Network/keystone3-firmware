@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
 use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
-use qp_poseidon_core::{hash_padded_bytes, FIELD_ELEMENT_PREIMAGE_PADDING_LEN};
+use qp_poseidon_core::hash_bytes;
 #[cfg(not(test))]
 use rust_tools::debug;
 use cryptoxide::hashing::blake2b_256;
@@ -33,10 +33,6 @@ pub mod structs;
 pub mod parser;
 pub mod ss58;
 
-fn poseidon_hash(data: &[u8]) -> [u8; 32] {
-    hash_padded_bytes::<FIELD_ELEMENT_PREIMAGE_PADDING_LEN>(data)
-}
-
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 
     #[cfg(not(test))]
@@ -59,7 +55,7 @@ pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<Strin
         
     let pub_key_bytes = keys.public.to_bytes();
     
-    let account_id = poseidon_hash(&pub_key_bytes);
+    let account_id = hash_bytes(&pub_key_bytes);
     
     // Use custom ss58 encoding
     Ok(ss58::encode(&account_id, 189))
@@ -166,6 +162,7 @@ pub fn sign_raw_tx(
     let signature = keys.secret.sign(&msg_to_sign, None, None)
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
+    #[cfg(not(test))]
     debug!(alloc::format!("Quantus signature hash: {}", hex::encode(blake2b_256(&signature))));
 
     // 4. Concatenate Signature + Public Key
@@ -195,7 +192,7 @@ mod tests {
     fn test_sign_encode_decode_roundtrip() {
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189'/0'/0/0";
+        let test_path = "m/44'/189'/0'/0'/0'";
         
         let test_payload = b"test payload for signing";
         
@@ -220,7 +217,7 @@ mod tests {
     fn test_sign_encode_decode_large_payload() {
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189'/0'/0/0";
+        let test_path = "m/44'/189'/0'/0'/0'";
         
         let mut large_payload = Vec::with_capacity(300);
         for i in 0..300 {
@@ -247,7 +244,7 @@ mod tests {
     fn test_ur_parts_format() {
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189'/0'/0/0";
+        let test_path = "m/44'/189'/0'/0'/0'";
         
         let test_payload = b"test";
         let signature = sign_raw_tx(
@@ -272,7 +269,7 @@ mod tests {
         
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189'/0'/0/0";
+        let test_path = "m/44'/189'/0'/0'/0'";
         
         let test_payload = b"test payload for signing";
         let signature = sign_raw_tx(
@@ -324,7 +321,7 @@ mod tests {
         
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
-        let test_path = "m/44'/189'/0'/0/0";
+        let test_path = "m/44'/189'/0'/0'/0'";
         
         let mut large_payload = Vec::with_capacity(300);
         for i in 0..300 {
@@ -372,10 +369,10 @@ extern crate std;
 use std::println;
 #[test]
 fn known_value_test() {
-        let mnemonic = "human snow truck virus now jaguar wall brisk shoe craft gravity diesel";
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
         let passphrase = "";
-        let path = "m/44'/189189'/0'/0/0";
-        let known_account_id = "qzmuHhD8p2dvndwkbjw5htDvaptyis5rEVc7v5BmqR3pfQ7QN";
+        let path = "m/44'/189189'/0'/0'/0'";
+        let known_account_id = "qzpKmxWGG2prrAtgYsBT99eiPYz2teMDnMqAXNgEJqZh4DFty";
 
         // 1. Verify Address
         let address = get_address(mnemonic, passphrase, path).expect("get_address failed");

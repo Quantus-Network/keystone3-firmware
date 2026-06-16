@@ -475,18 +475,22 @@ void GuiLockScreenUpdatePassCode(void)
 #include "keystore.h"
 #endif
 
+static void DeleteCountDownTimer(void)
+{
+    if (g_countDownTimer != NULL) {
+        lv_timer_del(g_countDownTimer);
+        g_countDownTimer = NULL;
+    }
+    g_countDown = 0;
+}
+
 static void CountDownTimerChangeLabelTextHandler(lv_timer_t *timer)
 {
     lv_obj_t *obj = (lv_obj_t *)timer->user_data;
     ++g_countDown;
     if (g_countDown == 3) {
         lv_label_set_text(obj, _("prepare_wallet_third_step"));
-        if (g_countDownTimer != NULL) {
-            g_countDown = 0;
-            lv_timer_del(g_countDownTimer);
-            g_countDownTimer = NULL;
-            UNUSED(g_countDownTimer);
-        }
+        DeleteCountDownTimer();
     }
 }
 
@@ -499,6 +503,7 @@ void GuiShowGenerateXPubLoading(void)
         return;
     }
 
+    DeleteCountDownTimer();
     if (g_LoadingView != NULL && lv_obj_is_valid(g_LoadingView)) {
         lv_obj_del(g_LoadingView);
         g_LoadingView = NULL;
@@ -552,6 +557,7 @@ static void GuiCloseGenerateXPubLoading(void)
             lv_obj_del(g_LoadingView);
             g_LoadingView = NULL;
         }
+        DeleteCountDownTimer();
         g_canDismissLoading = false;
     }
 }

@@ -181,7 +181,7 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
         char *mnemonic = NULL;
         char *password = SecretCacheGetPassword();
         char *passphrase = GetPassphrase(GetCurrentAccountIndex());
-        char path[] = "m/44'/189189'/0'/0/0";
+        char path[] = "m/44'/189189'/0'/0'/0'";
 
         if (GetMnemonicType() == MNEMONIC_TYPE_BIP39) {
             uint8_t entropy[ENTROPY_MAX_LEN];
