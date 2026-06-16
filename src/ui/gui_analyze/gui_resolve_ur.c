@@ -17,6 +17,7 @@
 
 #ifdef WEB3_VERSION
 #include "gui_key_derivation_request_widgets.h"
+#include "gui_derive_context_hash_request_widgets.h"
 #include "gui_eth_batch_tx_widgets.h"
 #endif
 
@@ -35,6 +36,8 @@ static SetChainData_t g_chainViewArray[] = {
     {REMAPVIEW_ETH_PERSONAL_MESSAGE, (SetChainDataFunc)GuiSetEthUrData},
     {REMAPVIEW_ETH_TYPEDDATA, (SetChainDataFunc)GuiSetEthUrData},
     {REMAPVIEW_TRX, (SetChainDataFunc)GuiSetTrxUrData},
+    {REMAPVIEW_TRX_PERSONAL_MESSAGE, (SetChainDataFunc)GuiSetTrxUrData},
+    {REMAPVIEW_TRX_SWAP, (SetChainDataFunc)GuiSetTrxUrData},
     {REMAPVIEW_COSMOS, (SetChainDataFunc)GuiSetCosmosUrData},
     {REMAPVIEW_SUI, (SetChainDataFunc)GuiSetSuiUrData},
     {REMAPVIEW_SUI_SIGN_MESSAGE_HASH, (SetChainDataFunc)GuiSetSuiUrData},
@@ -57,6 +60,7 @@ static SetChainData_t g_chainViewArray[] = {
     {REMAPVIEW_QUANTUS, (SetChainDataFunc)GuiSetQuantusUrData},
     {REMAPVIEW_IOTA, (SetChainDataFunc)GuiSetIotaUrData},
     {REMAPVIEW_IOTA_SIGN_MESSAGE_HASH, (SetChainDataFunc)GuiSetIotaUrData},
+    {REMAPVIEW_ZCASH, (SetChainDataFunc)GuiSetZcashUrData},
 #endif
 };
 
@@ -82,6 +86,9 @@ void handleURResult(URParseResult *urResult, URParseMultiResult *urMultiResult, 
     case KeyDerivationRequest:
         GuiSetKeyDerivationRequestData(urResult, urMultiResult, is_multi);
         break;
+    case DeriveContextHashRequest:
+        GuiSetDeriveContextHashRequestData(urResult, urMultiResult, is_multi);
+        break;
     case EthBatchTx:
         GuiSetEthBatchTxData(urResult, urMultiResult, is_multi);
         break;
@@ -103,6 +110,7 @@ void handleURResult(URParseResult *urResult, URParseMultiResult *urMultiResult, 
     if (urViewType.viewType == WebAuthResult
 #ifdef WEB3_VERSION
             || urViewType.viewType == KeyDerivationRequest
+            || urViewType.viewType == DeriveContextHashRequest
             || urViewType.viewType == EthBatchTx
 #endif
 #ifdef BTC_ONLY

@@ -4,12 +4,13 @@ use crate::addresses::cashaddr::CashAddrCodec;
 use crate::addresses::constants::{
     PUBKEY_ADDRESS_PREFIX_BCH, PUBKEY_ADDRESS_PREFIX_BTC, PUBKEY_ADDRESS_PREFIX_DASH,
     PUBKEY_ADDRESS_PREFIX_DASH_P2SH, PUBKEY_ADDRESS_PREFIX_DOGE, PUBKEY_ADDRESS_PREFIX_TEST,
-    SCRIPT_ADDRESS_PREFIX_BTC, SCRIPT_ADDRESS_PREFIX_DOGE, SCRIPT_ADDRESS_PREFIX_LTC,
-    SCRIPT_ADDRESS_PREFIX_LTC_P2PKH, SCRIPT_ADDRESS_PREFIX_TEST,
+    PUBKEY_ADDRESS_PREFIX_ZEC_BYTE0, PUBKEY_ADDRESS_PREFIX_ZEC_BYTE1, SCRIPT_ADDRESS_PREFIX_BTC,
+    SCRIPT_ADDRESS_PREFIX_DOGE, SCRIPT_ADDRESS_PREFIX_LTC, SCRIPT_ADDRESS_PREFIX_LTC_P2PKH,
+    SCRIPT_ADDRESS_PREFIX_TEST,
 };
 use crate::addresses::encoding::{
     BCHAddressEncoding, BTCAddressEncoding, DASHAddressEncoding, DOGEAddressEncoding,
-    LTCAddressEncoding,
+    LTCAddressEncoding, ZECAddressEncoding,
 };
 use crate::errors::BitcoinError;
 use crate::network::Network;
@@ -42,6 +43,7 @@ impl Address {
             | Network::Litecoin
             | Network::Dogecoin
             | Network::BitcoinCash
+            | Network::Zcash
             | Network::Dash => Ok(Address {
                 network,
                 payload: Payload::P2pkh {
@@ -56,7 +58,10 @@ impl Address {
 
     pub fn p2wpkh(pk: &PublicKey, network: Network) -> Result<Address, BitcoinError> {
         match network {
-            Network::Bitcoin | Network::BitcoinTestnet | Network::AvaxBtcBridge => {
+            Network::Bitcoin
+            | Network::BitcoinTestnet
+            | Network::AvaxBtcBridge
+            | Network::Litecoin => {
                 let payload = Payload::Segwit {
                     witness_program: WitnessProgram::p2wpkh(
                         &CompressedPublicKey::try_from(*pk).map_err(|e| {
@@ -214,6 +219,14 @@ impl fmt::Display for Address {
                     p2sh_prefix: SCRIPT_ADDRESS_PREFIX_LTC,
                     p2pkh_prefix: SCRIPT_ADDRESS_PREFIX_LTC_P2PKH,
                     bech32_hrp: "ltc",
+                };
+                encoding.fmt(fmt)
+            }
+            Network::Zcash => {
+                let encoding = ZECAddressEncoding {
+                    payload: &self.payload,
+                    p2pkh_prefix_byte0: PUBKEY_ADDRESS_PREFIX_ZEC_BYTE0,
+                    p2pkh_prefix_byte1: PUBKEY_ADDRESS_PREFIX_ZEC_BYTE1,
                 };
                 encoding.fmt(fmt)
             }
@@ -602,7 +615,7 @@ mod tests {
     #[test]
     fn test_address_p2wpkh_invalid_network() {
         let pk = sample_pubkey();
-        let result = Address::p2wpkh(&pk, Network::Litecoin);
+        let result = Address::p2wpkh(&pk, Network::BitcoinCash);
         assert!(matches!(result, Err(BitcoinError::AddressError(_))));
     }
 

@@ -54,8 +54,6 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_ZEUS].items[0].qrTitle = _("connect_zeus_title");
     g_tutorials[WALLET_LIST_ZEUS].items[0].qrUrl = _("connect_zeus_link");
 
-
-
     // WALLET_LIST_BABYLON
     g_tutorials[WALLET_LIST_BABYLON].len = 1;
     g_tutorials[WALLET_LIST_BABYLON].desc = _("connect_wallet_desc");
@@ -64,6 +62,12 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_BABYLON].items[0].qrTitle = _("connect_babylon_title");
     g_tutorials[WALLET_LIST_BABYLON].items[0].qrUrl = _("connect_babylon_link");
 
+    g_tutorials[WALLET_LIST_BULL].len = 1;
+    g_tutorials[WALLET_LIST_BULL].desc = _("connect_wallet_desc");
+    g_tutorials[WALLET_LIST_BULL].items[0].walletName = BULL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_BULL].items[0].url = BULL_WALLET_LINK;
+    g_tutorials[WALLET_LIST_BULL].items[0].qrTitle = BULL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_BULL].items[0].qrUrl = BULL_WALLET_LINK;
 
     // WALLET_LIST_METAMASK
     g_tutorials[WALLET_LIST_METAMASK].len = 2;
@@ -128,6 +132,14 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_MEDUSA].items[0].qrTitle = _("connect_medusa_title");
     g_tutorials[WALLET_LIST_MEDUSA].items[0].qrUrl = _("connect_medusa_link");
 
+    // WALLET_LIST_GERO
+    g_tutorials[WALLET_LIST_GERO].len = 1;
+    g_tutorials[WALLET_LIST_GERO].desc = _("connect_wallet_desc");
+    g_tutorials[WALLET_LIST_GERO].items[0].walletName = GERO_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_GERO].items[0].url = GERO_WALLET_LINK;
+    g_tutorials[WALLET_LIST_GERO].items[0].qrTitle = GERO_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_GERO].items[0].qrUrl = GERO_WALLET_LINK;
+
     // WALLET_LIST_Typhon
     g_tutorials[WALLET_LIST_TYPHON].len = 1;
     g_tutorials[WALLET_LIST_TYPHON].desc = _("connect_wallet_desc");
@@ -143,6 +155,13 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_RABBY].items[0].url = _("connect_rabby_link");
     g_tutorials[WALLET_LIST_RABBY].items[0].qrTitle = _("connect_rabby_title");
     g_tutorials[WALLET_LIST_RABBY].items[0].qrUrl = _("connect_rabby_link");
+
+    g_tutorials[WALLET_LIST_NABOX].len = 1;
+    g_tutorials[WALLET_LIST_NABOX].desc = _("connect_wallet_desc");
+    g_tutorials[WALLET_LIST_NABOX].items[0].walletName = "Nabox";
+    g_tutorials[WALLET_LIST_NABOX].items[0].url = "https://keyst.one/t/3rd/nabox";
+    g_tutorials[WALLET_LIST_NABOX].items[0].qrTitle = "Nabox";
+    g_tutorials[WALLET_LIST_NABOX].items[0].qrUrl = "https://keyst.one/t/3rd/nabox";
 
     // WALLET_LIST_BLOCK_WALLET
     g_tutorials[WALLET_LIST_BLOCK_WALLET].len = 1;
@@ -293,8 +312,6 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_THORWALLET].items[0].qrTitle = _("connect_thorwallet_title");
     g_tutorials[WALLET_LIST_THORWALLET].items[0].qrUrl = _("connect_thorwallet_link");
 
-
-
     //WALLET_LIST_TONKEEPER
     g_tutorials[WALLET_LIST_TONKEEPER].len = 1;
     g_tutorials[WALLET_LIST_TONKEEPER].desc = _("connect_wallet_desc");
@@ -303,7 +320,6 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_TONKEEPER].items[0].qrTitle = _("connect_tonkeeper_title");
     g_tutorials[WALLET_LIST_TONKEEPER].items[0].qrUrl = _("connect_tonkeeper_link");
 
-
     //WALLET_LIST_KEYSTONE
     g_tutorials[WALLET_LIST_KEYSTONE].len = 1;
     g_tutorials[WALLET_LIST_KEYSTONE].desc = _("connect_wallet_desc");
@@ -311,14 +327,6 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_KEYSTONE].items[0].url = _("connect_keystone_link");
     g_tutorials[WALLET_LIST_KEYSTONE].items[0].qrTitle = _("connect_keystone_title");
     g_tutorials[WALLET_LIST_KEYSTONE].items[0].qrUrl = _("connect_keystone_link");
-
-    // WALLET_LIST_LEAP_WALLET
-    g_tutorials[WALLET_LIST_LEAP].len = 1;
-    g_tutorials[WALLET_LIST_LEAP].desc = _("connect_wallet_desc");
-    g_tutorials[WALLET_LIST_LEAP].items[0].walletName =  _("connect_leap_title");
-    g_tutorials[WALLET_LIST_LEAP].items[0].url = _("connect_leap_link");
-    g_tutorials[WALLET_LIST_LEAP].items[0].qrTitle = _("connect_leap_title");
-    g_tutorials[WALLET_LIST_LEAP].items[0].qrUrl =  _("connect_leap_link");
 
     // WALLET_LIST_CAKE
     g_tutorials[WALLET_LIST_CAKE].len = 1;
@@ -383,13 +391,13 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_HELIUM].items[0].qrTitle = _("connect_helium_title");
     g_tutorials[WALLET_LIST_HELIUM].items[0].qrUrl = _("connect_helium_link");
 
-    // WALLET_LIST_ZASHI
-    g_tutorials[WALLET_LIST_ZASHI].len = 1;
-    g_tutorials[WALLET_LIST_ZASHI].desc = _("connect_wallet_desc");
-    g_tutorials[WALLET_LIST_ZASHI].items[0].walletName = _("connect_zashi_title");
-    g_tutorials[WALLET_LIST_ZASHI].items[0].url = _("connect_zashi_link");
-    g_tutorials[WALLET_LIST_ZASHI].items[0].qrTitle = _("connect_zashi_title");
-    g_tutorials[WALLET_LIST_ZASHI].items[0].qrUrl = _("connect_zashi_link");
+    // WALLET_LIST_ZODL
+    g_tutorials[WALLET_LIST_ZODL].len = 1;
+    g_tutorials[WALLET_LIST_ZODL].desc = _("connect_wallet_desc");
+    g_tutorials[WALLET_LIST_ZODL].items[0].walletName = ZODL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_ZODL].items[0].url = ZODL_WALLET_LINK;
+    g_tutorials[WALLET_LIST_ZODL].items[0].qrTitle = ZODL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_ZODL].items[0].qrUrl = ZODL_WALLET_LINK;
 
     // WALLET_LIST_CORE
     g_tutorials[WALLET_LIST_CORE].len = 1;
@@ -448,6 +456,13 @@ static void WalletTutorialsInit()
     g_tutorials[WALLET_LIST_BABYLON].items[0].url = "https://keyst.one/t/3rd/babylon";
     g_tutorials[WALLET_LIST_BABYLON].items[0].qrTitle = "Babylon";
     g_tutorials[WALLET_LIST_BABYLON].items[0].qrUrl = "https://keyst.one/t/3rd/babylon";
+
+    g_tutorials[WALLET_LIST_BULL].len = 1;
+    g_tutorials[WALLET_LIST_BULL].desc = _("connect_wallet_desc");
+    g_tutorials[WALLET_LIST_BULL].items[0].walletName = BULL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_BULL].items[0].url = BULL_WALLET_LINK;
+    g_tutorials[WALLET_LIST_BULL].items[0].qrTitle = BULL_WALLET_TITLE;
+    g_tutorials[WALLET_LIST_BULL].items[0].qrUrl = BULL_WALLET_LINK;
 
     g_tutorials[WALLET_LIST_BITCOIN_SAFE].len = 1;
     g_tutorials[WALLET_LIST_BITCOIN_SAFE].desc = _("connect_wallet_desc");

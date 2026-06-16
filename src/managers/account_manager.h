@@ -61,7 +61,6 @@ void SetPasscodeType(PasscodeType type);
 void SetMnemonicType(MnemonicType type);
 
 int32_t CreateNewAccount(uint8_t accountIndex, const uint8_t *entropy, uint8_t entropyLen, const char *password);
-int32_t CreateNewTonAccount(uint8_t accountIndex, const char *mnemonic, const char *password);
 int32_t CreateNewSlip39Account(uint8_t accountIndex, const uint8_t *ems, const uint8_t *entropy, uint8_t entropyLen, const char *password, uint16_t id, bool eb, uint8_t ie);
 int32_t ClearCurrentPasswordErrorCount(void);
 int32_t VerifyCurrentAccountPassword(const char *password);
@@ -101,8 +100,14 @@ uint8_t GetSlip39Eb(void);
 
 void AccountsDataCheck(void);
 
+#ifndef BTC_ONLY
+bool IsZcashSupportedForCurrentMnemonic(void);
+bool IsMoneroSupportedForCurrentMnemonic(void);
+int32_t GetZcashUFVK(uint8_t accountIndex, char* outUFVK);
+int32_t GetZcashSFP(uint8_t accountIndex, uint8_t* outSFP);
+int32_t SetupZcashSFP(uint8_t accountIndex, const char* password);
 #ifdef CYPHERPUNK_VERSION
-int32_t GetZcashUFVK(uint8_t accountIndex, char* outUFVK, uint8_t* outSFP);
-int32_t CalculateZcashUFVK(uint8_t accountIndex, const char* password);
+int32_t SetupZcashCache(uint8_t accountIndex, const char* password);
+#endif
 #endif
 #endif

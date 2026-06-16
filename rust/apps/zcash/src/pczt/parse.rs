@@ -3,13 +3,8 @@ use alloc::{
     string::{String, ToString},
     vec,
 };
-use zcash_note_encryption::{
-    try_output_recovery_with_ovk, try_output_recovery_with_pkd_esk, Domain,
-};
+use zcash_note_encryption::{try_output_recovery_with_ovk, try_output_recovery_with_pkd_esk};
 use zcash_vendor::{
-    orchard::{
-        self, keys::OutgoingViewingKey, note::Note, note_encryption::OrchardDomain, Address,
-    },
     pczt::{self, roles::verifier::Verifier, Pczt},
     ripemd::{Digest, Ripemd160},
     sha2::Sha256,
@@ -25,8 +20,14 @@ use zcash_vendor::{
     },
 };
 
-use crate::errors::ZcashError;
+#[cfg(feature = "cypherpunk")]
+use zcash_note_encryption::Domain;
+#[cfg(feature = "cypherpunk")]
+use zcash_vendor::orchard::{
+    self, keys::OutgoingViewingKey, note::Note, note_encryption::OrchardDomain, Address,
+};
 
+use crate::errors::ZcashError;
 use super::structs::{ParsedFrom, ParsedOrchard, ParsedPczt, ParsedTo, ParsedTransparent};
 
 const ZEC_DIVIDER: u32 = 100_000_000;
@@ -48,6 +49,7 @@ fn format_zec_value(value: f64) -> String {
 /// - `Ok(None)` if the output cannot be decrypted.
 /// - `Err(_)` if `ovk` is `None` and the PCZT is missing fields needed to directly
 ///   decrypt the output.
+#[cfg(feature = "cypherpunk")]
 pub fn decode_output_enc_ciphertext(
     action: &orchard::pczt::Action,
     ovk: Option<&OutgoingViewingKey>,
@@ -114,7 +116,8 @@ pub fn decode_output_enc_ciphertext(
 /// 3. Handles Sapling pool interactions (though full Sapling decoding is not supported)
 /// 4. Computes transfer values and fees
 /// 5. Returns a structured representation of the transaction
-pub fn parse_pczt<P: consensus::Parameters>(
+#[cfg(feature = "cypherpunk")]
+pub fn parse_pczt_cypherpunk<P: consensus::Parameters>(
     params: &P,
     seed_fingerprint: &[u8; 32],
     ufvk: &UnifiedFullViewingKey,
@@ -203,6 +206,77 @@ pub fn parse_pczt<P: consensus::Parameters>(
     Ok(ParsedPczt::new(
         parsed_transparent,
         parsed_orchard,
+        total_transfer_value,
+        fee_value,
+        has_sapling,
+    ))
+}
+#[cfg(feature = "multi_coins")]
+pub fn parse_pczt_multi_coins<P: consensus::Parameters>(
+    params: &P,
+    seed_fingerprint: &[u8; 32],
+    pczt: &Pczt,
+) -> Result<ParsedPczt, ZcashError> {
+    let mut parsed_transparent = None;
+
+    Verifier::new(pczt.clone())
+        .with_transparent(|bundle| {
+            parsed_transparent = parse_transparent(params, seed_fingerprint, bundle)
+                .map_err(pczt::roles::verifier::TransparentError::Custom)?;
+            Ok(())
+        })
+        .map_err(|e| ZcashError::InvalidDataError(alloc::format!("{e:?}")))?;
+
+    let mut total_input_value = 0;
+    let mut total_output_value = 0;
+    let mut total_change_value = 0;
+    //total_input_value = total_output_value + fee_value
+    //total_output_value = total_transfer_value + total_change_value
+
+    if let Some(transparent) = &parsed_transparent {
+        total_change_value += transparent
+            .get_to()
+            .iter()
+            .filter(|v| v.get_is_change())
+            .fold(0, |acc, to| acc + to.get_amount());
+        total_input_value += transparent
+            .get_from()
+            .iter()
+            .fold(0, |acc, from| acc + from.get_amount());
+        total_output_value += transparent
+            .get_to()
+            .iter()
+            .fold(0, |acc, to| acc + to.get_amount());
+    }
+
+    //treat all sapling output as output value since we don't support sapling decoding yet
+    //sapling value_sum can be trusted
+
+    let value_balance = (*pczt.sapling().value_sum())
+        .try_into()
+        .ok()
+        .and_then(|v| ZatBalance::from_i64(v).ok())
+        .ok_or(ZcashError::InvalidPczt(
+            "sapling value_sum is invalid".to_string(),
+        ))?;
+    let sapling_value_sum: i64 = value_balance.into();
+    if sapling_value_sum < 0 {
+        //value transfered to sapling pool
+        total_output_value = total_output_value.saturating_add(sapling_value_sum.unsigned_abs())
+    } else {
+        //value transfered from sapling pool
+        //this should not happen with Zashi.
+        total_input_value = total_input_value.saturating_add(sapling_value_sum as u64)
+    };
+
+    let total_transfer_value = format_zec_value((total_output_value - total_change_value) as f64);
+    let fee_value = format_zec_value((total_input_value - total_output_value) as f64);
+
+    let has_sapling = !pczt.sapling().spends().is_empty() || !pczt.sapling().outputs().is_empty();
+
+    Ok(ParsedPczt::new(
+        parsed_transparent,
+        None,
         total_transfer_value,
         fee_value,
         has_sapling,
@@ -314,17 +388,11 @@ fn parse_transparent_output(
                 ZcashError::InvalidPczt("missing user address for transparent output".into())
             })?;
             let zec_value = format_zec_value(output.value().into_u64() as f64);
-            // we only consider the simple p2sh script at the moment. multisig is not considered;
-            let is_change = output
-                .bip32_derivation()
-                .first_key_value()
-                .map(|(_, derivation)| seed_fingerprint == derivation.seed_fingerprint())
-                .unwrap_or(false);
             Ok(ParsedTo::new(
                 address,
                 zec_value,
                 output.value().into_u64(),
-                is_change,
+                false,
                 false,
                 None,
             ))
@@ -335,6 +403,7 @@ fn parse_transparent_output(
     }
 }
 
+#[cfg(feature = "cypherpunk")]
 fn parse_orchard<P: consensus::Parameters>(
     params: &P,
     seed_fingerprint: &[u8; 32],
@@ -367,6 +436,7 @@ fn parse_orchard<P: consensus::Parameters>(
     }
 }
 
+#[cfg(feature = "cypherpunk")]
 fn parse_orchard_spend(
     seed_fingerprint: &[u8; 32],
     spend: &orchard::pczt::Spend,
@@ -387,6 +457,35 @@ fn parse_orchard_spend(
     Ok(ParsedFrom::new(None, zec_value, value, is_mine))
 }
 
+#[cfg(feature = "cypherpunk")]
+fn is_wallet_orchard_address(
+    ufvk: &UnifiedFullViewingKey,
+    address: &Address,
+) -> Result<bool, ZcashError> {
+    let fvk = ufvk.orchard().ok_or(ZcashError::InvalidDataError(
+        "orchard is not present in ufvk".to_string(),
+    ))?;
+    let external_ivk = fvk.to_ivk(zcash_vendor::zip32::Scope::External);
+    let internal_ivk = fvk.to_ivk(zcash_vendor::zip32::Scope::Internal);
+
+    Ok(external_ivk.diversifier_index(address).is_some()
+        || internal_ivk.diversifier_index(address).is_some())
+}
+
+#[cfg(feature = "cypherpunk")]
+fn is_internal_orchard_address(
+    ufvk: &UnifiedFullViewingKey,
+    address: &Address,
+) -> Result<bool, ZcashError> {
+    let fvk = ufvk.orchard().ok_or(ZcashError::InvalidDataError(
+        "orchard is not present in ufvk".to_string(),
+    ))?;
+    let internal_ivk = fvk.to_ivk(zcash_vendor::zip32::Scope::Internal);
+
+    Ok(internal_ivk.diversifier_index(address).is_some())
+}
+
+#[cfg(feature = "cypherpunk")]
 fn parse_orchard_output<P: consensus::Parameters>(
     params: &P,
     ufvk: &UnifiedFullViewingKey,
@@ -410,11 +509,10 @@ fn parse_orchard_output<P: consensus::Parameters>(
         .ok_or(ZcashError::InvalidPczt("value is not present".to_string()))?
         .inner();
 
-    let decode_output =
-        |vk: Option<OutgoingViewingKey>, is_internal: bool| match decode_output_enc_ciphertext(
-            action,
-            vk.as_ref(),
-        )? {
+    let decode_output = |vk: Option<OutgoingViewingKey>, is_internal_ovk: bool| match decode_output_enc_ciphertext(
+        action,
+        vk.as_ref(),
+    )? {
             Some((note, address, memo)) => {
                 let zec_value = format_zec_value(note.value().inner() as f64);
                 let memo = decode_memo(memo);
@@ -445,6 +543,13 @@ fn parse_orchard_output<P: consensus::Parameters>(
                     }
                 }
 
+                let belongs_to_wallet = is_wallet_orchard_address(ufvk, &address)?;
+                let is_internal = is_internal_orchard_address(ufvk, &address)?;
+                if is_internal_ovk && !belongs_to_wallet {
+                    return Err(ZcashError::InvalidPczt(
+                        "Orchard output was recoverable with an internal OVK but does not belong to this wallet".into(),
+                    ));
+                }
                 let is_dummy = match vk {
                     Some(_) => false,
                     None => matches!((action.output().user_address(), value), (None, 0)),
@@ -569,12 +674,47 @@ fn decode_memo(memo_bytes: [u8; 512]) -> Option<String> {
     Some(hex::encode(memo_bytes))
 }
 
+#[cfg(feature = "cypherpunk")]
 #[cfg(test)]
 mod tests {
+    use alloc::collections::BTreeMap;
     use super::*;
-    use zcash_vendor::zcash_protocol::consensus::MAIN_NETWORK;
+    use zcash_vendor::{
+        transparent::pczt,
+        zcash_address::ZcashAddress,
+        zcash_protocol::consensus::{Parameters, MAIN_NETWORK},
+    };
 
     extern crate std;
+
+    fn p2sh_output_with_matching_seed_fingerprint(
+        seed_fingerprint: [u8; 32],
+    ) -> transparent::pczt::Output {
+        let hash = [0x11; 20];
+        let script_pubkey = {
+            let mut script = vec![0xa9, 0x14];
+            script.extend_from_slice(&hash);
+            script.push(0x87);
+            script
+        };
+        let user_address =
+            ZcashAddress::from_transparent_p2sh(MAIN_NETWORK.network_type(), hash).encode();
+        let mut bip32_derivation = BTreeMap::new();
+        bip32_derivation.insert(
+            [0x02; 33],
+            pczt::Bip32Derivation::parse(seed_fingerprint, vec![0]).unwrap(),
+        );
+
+        pczt::Output::parse(
+            42_000,
+            script_pubkey,
+            Some(vec![0x51]),
+            bip32_derivation,
+            Some(user_address),
+            BTreeMap::new(),
+        )
+        .unwrap()
+    }
 
     #[test]
     fn test_format_zec_value() {
@@ -611,7 +751,7 @@ mod tests {
         let fingerprint = fingerprint.try_into().unwrap();
         let unified_fvk = UnifiedFullViewingKey::decode(&MAIN_NETWORK, ufvk).unwrap();
 
-        let result = parse_pczt(&MAIN_NETWORK, &fingerprint, &unified_fvk, &pczt);
+        let result = parse_pczt_cypherpunk(&MAIN_NETWORK, &fingerprint, &unified_fvk, &pczt);
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(!result.get_has_sapling());
@@ -659,12 +799,22 @@ mod tests {
         let fingerprint = fingerprint.try_into().unwrap();
         let unified_fvk = UnifiedFullViewingKey::decode(&MAIN_NETWORK, ufvk).unwrap();
 
-        let result = parse_pczt(&MAIN_NETWORK, &fingerprint, &unified_fvk, &pczt);
+        let result = parse_pczt_cypherpunk(&MAIN_NETWORK, &fingerprint, &unified_fvk, &pczt);
         assert!(result.is_ok());
         let result = result.unwrap();
         assert!(result.get_has_sapling());
         assert_eq!(result.get_total_transfer_value(), "0.001 ZEC");
         assert_eq!(result.get_fee_value(), "0.0002 ZEC");
+    }
+
+    #[test]
+    fn test_parse_p2sh_output_is_never_marked_as_change() {
+        let seed_fingerprint = [0x22; 32];
+        let output = p2sh_output_with_matching_seed_fingerprint(seed_fingerprint);
+
+        let parsed = parse_transparent_output(&seed_fingerprint, &output).unwrap();
+
+        assert!(!parsed.get_is_change());
     }
 
     #[test]

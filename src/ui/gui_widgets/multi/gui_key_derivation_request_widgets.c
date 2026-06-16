@@ -148,12 +148,12 @@ static void RecalcCurrentWalletIndex(char *origin)
         g_walletIndex = WALLET_LIST_ETERNL;
     } else if (strcmp("Typhon Extension", origin) == 0) {
         g_walletIndex = WALLET_LIST_TYPHON;
-    } else if (strcmp("Leap Mobile", origin) == 0) {
-        g_walletIndex = WALLET_LIST_LEAP;
     } else if (strcmp("Begin", origin) == 0) {
         g_walletIndex = WALLET_LIST_BEGIN;
     } else if (strcmp("Medusa", origin) == 0) {
         g_walletIndex = WALLET_LIST_MEDUSA;
+    } else if (strcmp("gerowallet", origin) == 0) {
+        g_walletIndex = WALLET_LIST_GERO;
     } else {
         g_walletIndex = WALLET_LIST_ETERNL;
     }

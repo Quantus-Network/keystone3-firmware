@@ -97,6 +97,7 @@ static void GuiInitWalletState(void)
         g_walletState[HOME_WALLET_CARD_BNB].enable = false;
         g_walletState[HOME_WALLET_CARD_DOT].enable = false;
         g_walletState[HOME_WALLET_CARD_TON].enable = true;
+        g_walletState[HOME_WALLET_CARD_ZEC].enable = IsZcashSupportedForCurrentMnemonic();
         g_coinFilterNum = 2;
         break;
     case MNEMONIC_TYPE_BIP39:
@@ -189,9 +190,14 @@ static void UpdateManageWalletState(bool needUpdate)
             continue;
         }
 
-        if (g_walletState[i].enable) {
-            total++;
+        if (!g_walletState[i].enable) {
+            if (g_walletState[i].checkBox != NULL) {
+                lv_obj_clear_state(g_walletState[i].checkBox, LV_STATE_CHECKED);
+            }
+            continue;
         }
+
+        total++;
         if (g_walletBakState[i].state == true) {
             selectCnt++;
             if (g_walletState[i].checkBox != NULL) {
@@ -494,12 +500,6 @@ static void GuiUpdateCoinListWidget(HomeGesture_t gesture)
         }
     }
 
-    if (GetMnemonicType() == MNEMONIC_TYPE_TON) {
-        lv_obj_t *label = GuiCreateIllustrateLabel(coinListCont, _("ton_assets_manage_notice"));
-        lv_obj_set_width(label, 416);
-        lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
-        lv_obj_align(label, LV_ALIGN_TOP_LEFT, 32, 144);
-    }
     UpdateManageWalletState(false);
 }
 

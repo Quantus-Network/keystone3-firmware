@@ -44,7 +44,6 @@ static int AddBTCPathsStandard(ExtendedPublicKey *keys, int startIndex, bool inc
     return index - startIndex;
 }
 
-
 static PathAddResult_t AddETHLedgerLivePaths(ExtendedPublicKey *keys, int startIndex)
 {
     int index = startIndex;
@@ -195,7 +194,7 @@ UREncodeResult *GetMetamaskDataForAccountType(ETHAccountType accountType)
 
 UREncodeResult *GetUnlimitedMetamaskDataForAccountType(ETHAccountType accountType)
 {
-    return BasicGetMetamaskDataForAccountType(accountType, get_unlimited_connect_metamask_ur);
+    return BasicGetMetamaskDataForAccountType(accountType, get_connect_metamask_ur_unlimited);
 }
 
 UREncodeResult *GuiGetMetamaskData(void)
@@ -209,11 +208,60 @@ UREncodeResult *GuiGetImTokenData(void)
     return GetMetamaskDataForAccountType(Bip44Standard);
 }
 
+UREncodeResult *GuiGetNaboxData(void)
+{
+    // 19 = 9 + sol 10
+    ChainPath_t chainPaths[19] = {
+        {.path = "m/44'/60'/0'", .chainType = XPUB_TYPE_ETH_BIP44_STANDARD},
+        {.path = "m/84'/0'/0'", .chainType = XPUB_TYPE_BTC_NATIVE_SEGWIT},
+        {.path = "m/49'/0'/0'", .chainType = XPUB_TYPE_BTC},
+        {.path = "m/44'/0'/0'", .chainType = XPUB_TYPE_BTC_LEGACY},
+        {.path = "m/86'/0'/0'", .chainType = XPUB_TYPE_BTC_TAPROOT},
+        {.path = "m/44'/195'/0'", .chainType = XPUB_TYPE_TRX},
+        {.path = "m/49'/2'/0'", .chainType = XPUB_TYPE_LTC},
+        {.path = "m/44'/3'/0'", .chainType = XPUB_TYPE_DOGE},
+        {.path = "m/44'/145'/0'", .chainType = XPUB_TYPE_BCH},
+    };
+    int chainNum = NUMBER_OF_ARRAYS(chainPaths);
+    for (int i = 0; i < 10; i++) {
+        char *path = SRAM_MALLOC(BUFFER_SIZE_32);
+        snprintf_s(path, BUFFER_SIZE_32, "m/44'/501'/%d'", i);
+        chainPaths[i + 9].path = path;
+        chainPaths[i + 9].chainType = XPUB_TYPE_SOL_BIP44_0 + i;
+    }
+    ExtendedPublicKey keys[chainNum];
+    uint8_t mfp[4] = {0};
+    GetMasterFingerPrint(mfp);
+    char serialNumber[256];
+    GetSerialNumber(serialNumber);
+    char firmwareVersion[12];
+    GetSoftWareVersionNumber(firmwareVersion);
+    PtrT_CSliceFFI_ExtendedPublicKey public_keys = BuildChainPaths(chainPaths, keys, chainNum);
+    UREncodeResult *urEncode = get_keystone_connect_wallet_ur(mfp, sizeof(mfp), serialNumber, public_keys, "Keystone 3 Pro", firmwareVersion, NULL, 0);
+    for (int i = 9; i < chainNum; i++) {
+        if (chainPaths[i].path != NULL) {
+            SRAM_FREE(chainPaths[i].path);
+        }
+    }
+    CHECK_CHAIN_PRINT(urEncode);
+    SRAM_FREE(public_keys);
+    return urEncode;
+}
+
 UREncodeResult *GuiGetCoreWalletData(void)
 {
     ChainPath_t chainPaths[] = {
         {.path = "m/44'/60'/0'", .chainType = XPUB_TYPE_ETH_BIP44_STANDARD},
-        {.path = "m/44'/9000'/0'", .chainType = XPUB_TYPE_AVAX_X_P},
+        {.path = "m/44'/9000'/0'", .chainType = XPUB_TYPE_AVAX_X_P_0},
+        {.path = "m/44'/9000'/1'", .chainType = XPUB_TYPE_AVAX_X_P_1},
+        {.path = "m/44'/9000'/2'", .chainType = XPUB_TYPE_AVAX_X_P_2},
+        {.path = "m/44'/9000'/3'", .chainType = XPUB_TYPE_AVAX_X_P_3},
+        {.path = "m/44'/9000'/4'", .chainType = XPUB_TYPE_AVAX_X_P_4},
+        {.path = "m/44'/9000'/5'", .chainType = XPUB_TYPE_AVAX_X_P_5},
+        {.path = "m/44'/9000'/6'", .chainType = XPUB_TYPE_AVAX_X_P_6},
+        {.path = "m/44'/9000'/7'", .chainType = XPUB_TYPE_AVAX_X_P_7},
+        {.path = "m/44'/9000'/8'", .chainType = XPUB_TYPE_AVAX_X_P_8},
+        {.path = "m/44'/9000'/9'", .chainType = XPUB_TYPE_AVAX_X_P_9},
     };
     ExtendedPublicKey keys[NUMBER_OF_ARRAYS(chainPaths)];
     uint8_t mfp[4] = {0};
@@ -413,39 +461,6 @@ UREncodeResult *GuiGetKeplrDataByIndex(uint32_t index)
     return urEncode;
 }
 
-UREncodeResult *GuiGetLeapData(void)
-{
-#define CHAIN_AMOUNT 4
-    uint8_t mfp[4] = {0};
-    GetMasterFingerPrint(mfp);
-    PtrT_CSliceFFI_KeplrAccount publicKeys = SRAM_MALLOC(sizeof(CSliceFFI_KeplrAccount));
-    GuiChainCoinType chains[CHAIN_AMOUNT] = {
-        CHAIN_ATOM,
-        CHAIN_EVMOS,
-        CHAIN_RUNE,
-        CHAIN_SCRT
-    };
-    KeplrAccount keys[CHAIN_AMOUNT];
-    publicKeys->data = keys;
-    publicKeys->size = CHAIN_AMOUNT;
-
-    for (uint8_t i = 0; i < CHAIN_AMOUNT; i++) {
-        const CosmosChain_t *chain = GuiGetCosmosChain(chains[i]);
-        keys[i].xpub = GetCurrentAccountPublicKey(chain->xpubType);
-        keys[i].name = "Account-1";
-        keys[i].path = SRAM_MALLOC(BUFFER_SIZE_32);
-        snprintf_s(keys[i].path, BUFFER_SIZE_32, "M/44'/%u'/0'/0/0", chain->coinType);
-    }
-
-    UREncodeResult *urEncode = get_connect_keplr_wallet_ur(mfp, sizeof(mfp), publicKeys);
-    CHECK_CHAIN_PRINT(urEncode);
-    for (uint8_t i = 0; i < CHAIN_AMOUNT; i++) {
-        SRAM_FREE(keys[i].path);
-    }
-    SRAM_FREE(publicKeys);
-    return urEncode;
-}
-
 UREncodeResult *GuiGetXrpToolkitDataByIndex(uint16_t index)
 {
     uint8_t mfp[4] = {0};
@@ -459,7 +474,7 @@ UREncodeResult *GuiGetXrpToolkitDataByIndex(uint16_t index)
     return urEncode;
 }
 
-UREncodeResult *GuiGetKeystoneConnectWalletData(void)
+UREncodeResult *GuiGetKeystoneConnectWalletDataSlip39(void)
 {
     ChainPath_t chainPaths[] = {
         {.path = "m/44'/60'/0'", .chainType = XPUB_TYPE_ETH_BIP44_STANDARD},
@@ -470,6 +485,11 @@ UREncodeResult *GuiGetKeystoneConnectWalletData(void)
         {.path = GetXPubPath(XPUB_TYPE_TRX), .chainType = XPUB_TYPE_TRX},
         {.path = GetXPubPath(XPUB_TYPE_DOGE), .chainType = XPUB_TYPE_DOGE},
         {.path = GetXPubPath(XPUB_TYPE_XRP), .chainType = XPUB_TYPE_XRP},
+        {.path = GetXPubPath(XPUB_TYPE_LTC), .chainType = XPUB_TYPE_LTC},
+        {.path = GetXPubPath(XPUB_TYPE_LTC_NATIVE_SEGWIT), .chainType = XPUB_TYPE_LTC_NATIVE_SEGWIT},
+        {.path = GetXPubPath(XPUB_TYPE_ADA_0), .chainType = XPUB_TYPE_ADA_0},
+        {.path = GetXPubPath(XPUB_TYPE_SOL_BIP44_0), .chainType = XPUB_TYPE_SOL_BIP44_0},
+        {.path = GetXPubPath(XPUB_TYPE_SOL_BIP44_CHANGE_0), .chainType = XPUB_TYPE_SOL_BIP44_CHANGE_0},
     };
     ExtendedPublicKey keys[NUMBER_OF_ARRAYS(chainPaths)];
     uint8_t mfp[4] = {0};
@@ -479,7 +499,44 @@ UREncodeResult *GuiGetKeystoneConnectWalletData(void)
     GetSerialNumber(serialNumber);
     char firmwareVersion[12];
     GetSoftWareVersionNumber(firmwareVersion);
-    UREncodeResult *urEncode = get_keystone_connect_wallet_ur(mfp, sizeof(mfp), serialNumber, public_keys, "Keystone 3 Pro", firmwareVersion);
+
+    UREncodeResult *urEncode = get_keystone_connect_wallet_ur(mfp, sizeof(mfp), serialNumber, public_keys, "Keystone 3 Pro", firmwareVersion, NULL, 0);
+    CHECK_CHAIN_PRINT(urEncode);
+    SRAM_FREE(public_keys);
+    return urEncode;
+}
+
+UREncodeResult *GuiGetKeystoneConnectWalletDataBip39(void)
+{
+    ChainPath_t chainPaths[] = {
+        {.path = "m/44'/60'/0'", .chainType = XPUB_TYPE_ETH_BIP44_STANDARD},
+        {.path = "m/84'/0'/0'", .chainType = XPUB_TYPE_BTC_NATIVE_SEGWIT},
+        {.path = "m/49'/0'/0'", .chainType = XPUB_TYPE_BTC},
+        {.path = "m/44'/0'/0'", .chainType = XPUB_TYPE_BTC_LEGACY},
+        {.path = "m/86'/0'/0'", .chainType = XPUB_TYPE_BTC_TAPROOT},
+        {.path = GetXPubPath(XPUB_TYPE_TRX), .chainType = XPUB_TYPE_TRX},
+        {.path = GetXPubPath(XPUB_TYPE_DOGE), .chainType = XPUB_TYPE_DOGE},
+        {.path = GetXPubPath(XPUB_TYPE_XRP), .chainType = XPUB_TYPE_XRP},
+        {.path = GetXPubPath(XPUB_TYPE_LTC), .chainType = XPUB_TYPE_LTC},
+        {.path = GetXPubPath(XPUB_TYPE_LTC_NATIVE_SEGWIT), .chainType = XPUB_TYPE_LTC_NATIVE_SEGWIT},
+        {.path = GetXPubPath(XPUB_TYPE_ZEC_TRANSPARENT_LEGACY), .chainType = XPUB_TYPE_ZEC_TRANSPARENT_LEGACY},
+        {.path = GetXPubPath(XPUB_TYPE_ADA_0), .chainType = XPUB_TYPE_ADA_0},
+        {.path = GetXPubPath(XPUB_TYPE_SOL_BIP44_0), .chainType = XPUB_TYPE_SOL_BIP44_0},
+        {.path = GetXPubPath(XPUB_TYPE_SOL_BIP44_CHANGE_0), .chainType = XPUB_TYPE_SOL_BIP44_CHANGE_0},
+    };
+    ExtendedPublicKey keys[NUMBER_OF_ARRAYS(chainPaths)];
+    uint8_t mfp[4] = {0};
+    GetMasterFingerPrint(mfp);
+    PtrT_CSliceFFI_ExtendedPublicKey public_keys = BuildChainPaths(chainPaths, keys, NUMBER_OF_ARRAYS(chainPaths));
+    char serialNumber[256];
+    GetSerialNumber(serialNumber);
+    char firmwareVersion[12];
+    GetSoftWareVersionNumber(firmwareVersion);
+
+    uint8_t sfp[32];
+    GetZcashSFP(GetCurrentAccountIndex(), sfp);
+
+    UREncodeResult *urEncode = get_keystone_connect_wallet_ur(mfp, sizeof(mfp), serialNumber, public_keys, "Keystone 3 Pro", firmwareVersion, sfp, sizeof(sfp));
     CHECK_CHAIN_PRINT(urEncode);
     SRAM_FREE(public_keys);
     return urEncode;

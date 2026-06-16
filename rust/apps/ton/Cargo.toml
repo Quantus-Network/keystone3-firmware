@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 keystore = { workspace = true, default-features = false }
-bitstream-io = { git = "https://github.com/KeystoneHQ/bitstream-io", tag = "no_std@0.1.2", default-features = false, features = [
+bitstream-io = { version = "4.10.0", default-features = false, features = [
     "alloc",
 ] }
 num-bigint = { workspace = true }
@@ -29,7 +29,7 @@ zeroize = { workspace = true }
 
 
 [dev-dependencies]
-keystore = { workspace = true }
+keystore = { workspace = true, features = ["multi_coins"] }
 anyhow = "*"
 urlencoding = "2.1.3"
 

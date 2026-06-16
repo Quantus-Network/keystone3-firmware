@@ -147,13 +147,19 @@ static UtxoReceiveWidgets_t g_utxoReceiveWidgets;
 static UtxoReceiveTile g_utxoReceiveTileNow;
 static bool g_gotoAddressValid = false;
 #ifndef BTC_ONLY
-static const AddressSettingsItem_t g_addressSettings[] = {
+static const AddressSettingsItem_t g_mainNetAddressSettings[] = {
     {"Native SegWit",   "P2WPKH",           "m/84'/0'/0'"},
     {"Taproot",         "P2TR",             "m/86'/0'/0'"},
     {"Nested SegWit",   "P2SH-P2WPKH",      "m/49'/0'/0'"},
     {"Legacy",          "P2PKH",            "m/44'/0'/0'"},
 };
-static uint32_t g_addressSettingsNum = sizeof(g_addressSettings) / sizeof(g_addressSettings[0]);
+
+static const AddressSettingsItem_t g_ltcAddressSettings[] = {
+    {"Native SegWit",   "P2WPKH",           "m/84'/2'/0'"},
+    {"Nested SegWit",   "P2SH-P2WPKH",      "m/49'/2'/0'"},
+};
+static const AddressSettingsItem_t *g_addressSettings = g_mainNetAddressSettings;
+static uint32_t g_addressSettingsNum = 0;
 #else
 static const AddressSettingsItem_t g_mainNetAddressSettings[] = {
     {"Native SegWit",   "P2WPKH",           "m/84'/0'/0'"},
@@ -205,12 +211,29 @@ static HOME_WALLET_CARD_ENUM g_chainCard;
 static PageWidget_t *g_pageWidget;
 static lv_obj_t *g_egCont = NULL;
 static lv_obj_t *g_addressLabel[2];
+#ifdef WEB3_VERSION
+// Page-local toggle: when on, BTC receive addresses are shown in testnet/signet
+// encoding (re-encoded from the cached mainnet xpub). Resets each time the page opens.
+static bool g_btcShowAsTestAddress = false;
+static bool g_btcPreviewShowAsTestAddress = false;
+static lv_obj_t *g_btcTestAddressSwitch = NULL;
+static lv_obj_t *g_testnetWarningLabel = NULL;
+static lv_obj_t *g_fullscreenTestnetWarningLabel = NULL;
+#endif
 
 static void InitDerivationPathDesc(uint8_t chain)
 {
     switch (chain) {
     case HOME_WALLET_CARD_BTC:
         g_derivationPathDescs = GetDerivationPathDescs(BTC_DERIVATION_PATH_DESC);
+        g_addressSettingsNum = NUMBER_OF_ARRAYS(g_mainNetAddressSettings);
+#ifdef WEB3_VERSION
+        break;
+    case HOME_WALLET_CARD_LTC:
+        g_derivationPathDescs = GetDerivationPathDescs(LTC_DERIVATION_PATH_DESC);
+        g_addressSettingsNum = NUMBER_OF_ARRAYS(g_ltcAddressSettings);
+        break;
+#endif
 #ifdef BTC_ONLY
         g_testNetderivationPathDescs = GetDerivationPathDescs(BTC_TEST_NET_DERIVATION_PATH_DESC);
 #endif
@@ -240,6 +263,10 @@ void GuiReceiveInit(uint8_t chain)
     InitDerivationPathDesc(chain);
     InitMultisigWalletConfig();
     g_chainCard = chain;
+#ifdef WEB3_VERSION
+    g_btcShowAsTestAddress = false;
+    g_btcPreviewShowAsTestAddress = false;
+#endif
     g_currentAccountIndex = GetCurrentAccountIndex();
     g_selectIndex = GetCurrentSelectIndex();
 #ifdef BTC_ONLY
@@ -294,6 +321,11 @@ void GuiReceiveDeInit(void)
         DestroyPageWidget(g_pageWidget);
         g_pageWidget = NULL;
     }
+#ifdef WEB3_VERSION
+    g_btcTestAddressSwitch = NULL;
+    g_testnetWarningLabel = NULL;
+    g_fullscreenTestnetWarningLabel = NULL;
+#endif
 #ifdef BTC_ONLY
     if (g_multiSigWallet != NULL) {
         free_MultiSigWallet(g_multiSigWallet);
@@ -307,6 +339,7 @@ static bool HasMoreBtn()
     switch (g_chainCard) {
 #ifdef WEB3_VERSION
     case HOME_WALLET_CARD_LTC:
+        return true;
     case HOME_WALLET_CARD_BCH:
     case HOME_WALLET_CARD_DASH:
     case HOME_WALLET_CARD_DOGE:
@@ -316,6 +349,42 @@ static bool HasMoreBtn()
         return true;
     }
 }
+
+#ifdef WEB3_VERSION
+static bool IsBtcTestAddressPreviewChanged(void)
+{
+    return g_chainCard == HOME_WALLET_CARD_BTC &&
+           g_btcPreviewShowAsTestAddress != g_btcShowAsTestAddress;
+}
+
+static bool IsBtcTestAddressEnabled(void)
+{
+    if (g_chainCard != HOME_WALLET_CARD_BTC) {
+        return false;
+    }
+    return g_utxoReceiveTileNow == UTXO_RECEIVE_TILE_ADDRESS_SETTINGS ?
+           g_btcPreviewShowAsTestAddress : g_btcShowAsTestAddress;
+}
+
+static void SetTestnetWarningVisible(lv_obj_t *label, bool visible)
+{
+    if (label == NULL) {
+        return;
+    }
+    if (visible) {
+        lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void UpdateTestnetWarnings(void)
+{
+    bool isTestAddress = IsBtcTestAddressEnabled();
+    SetTestnetWarningVisible(g_testnetWarningLabel, isTestAddress);
+    SetTestnetWarningVisible(g_fullscreenTestnetWarningLabel, isTestAddress);
+}
+#endif
 
 void GuiReceiveRefresh(void)
 {
@@ -327,6 +396,11 @@ void GuiReceiveRefresh(void)
         SetCoinWallet(g_pageWidget->navBarWidget, titleItem.type, titleItem.title);
         SetNavBarRightBtn(g_pageWidget->navBarWidget, HasMoreBtn() ? NVS_BAR_MORE_INFO : NVS_RIGHT_BUTTON_BUTT, MoreHandler, NULL);
         RefreshQrCode();
+#ifdef WEB3_VERSION
+        if (g_chainCard == HOME_WALLET_CARD_BTC && g_btcShowAsTestAddress) {
+            GuiUpdateStatusCoinButton(g_pageWidget->navBarWidget->midBtn, titleItem.title, &coinBtcTestnet);
+        }
+#endif
         if (g_selectIndex == GetMaxAccountIndex()) {
             lv_obj_set_style_img_opa(g_utxoReceiveWidgets.changeImg, LV_OPA_60, LV_PART_MAIN);
             lv_obj_set_style_text_opa(g_utxoReceiveWidgets.changeLabel, LV_OPA_60, LV_PART_MAIN);
@@ -334,6 +408,9 @@ void GuiReceiveRefresh(void)
             lv_obj_set_style_img_opa(g_utxoReceiveWidgets.changeImg, LV_OPA_COVER, LV_PART_MAIN);
             lv_obj_set_style_text_opa(g_utxoReceiveWidgets.changeLabel, LV_OPA_COVER, LV_PART_MAIN);
         }
+#ifdef WEB3_VERSION
+        UpdateTestnetWarnings();
+#endif
         break;
     case UTXO_RECEIVE_TILE_SWITCH_ACCOUNT:
         SetNavBarLeftBtn(g_pageWidget->navBarWidget, NVS_BAR_RETURN, ReturnHandler, NULL);
@@ -358,6 +435,18 @@ void GuiReceiveRefresh(void)
         SetMidBtnLabel(g_pageWidget->navBarWidget, NVS_BAR_MID_LABEL, _("receive_btc_more_address_settings"));
         SetNavBarRightBtn(g_pageWidget->navBarWidget, NVS_RIGHT_BUTTON_BUTT, NULL, NULL);
         g_selectType = g_addressType[g_currentAccountIndex];
+#ifdef WEB3_VERSION
+        if (g_chainCard == HOME_WALLET_CARD_BTC) {
+            g_btcPreviewShowAsTestAddress = g_btcShowAsTestAddress;
+            if (g_btcTestAddressSwitch != NULL) {
+                if (g_btcPreviewShowAsTestAddress) {
+                    lv_obj_add_state(g_btcTestAddressSwitch, LV_STATE_CHECKED);
+                } else {
+                    lv_obj_clear_state(g_btcTestAddressSwitch, LV_STATE_CHECKED);
+                }
+            }
+        }
+#endif
         for (uint32_t i = 0; i < g_addressSettingsNum; i++) {
             UpdateAddrTypeCheckbox(i, g_selectType == i);
         }
@@ -412,9 +501,13 @@ static void GuiCreateMoreWidgets(lv_obj_t *parent)
         height = 132;
     }
 #else
-    int height = 324;
-    if (g_chainCard != HOME_WALLET_CARD_BTC) {
-        height = 132;
+    int height = 132;
+    if (g_chainCard == HOME_WALLET_CARD_BTC) {
+        height = 324;
+#ifdef WEB3_VERSION
+    } else if (g_chainCard == HOME_WALLET_CARD_LTC) {
+        height = 208;
+#endif
     }
 #endif
     g_utxoReceiveWidgets.moreCont = GuiCreateHintBox(height);
@@ -442,6 +535,12 @@ static void GuiCreateMoreWidgets(lv_obj_t *parent)
                                         ExportXpubHandler, NULL, true);
             lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, 120 + 476);
             break;
+#ifdef WEB3_VERSION
+        case HOME_WALLET_CARD_LTC:
+            btn = GuiCreateSelectButton(cont, _("receive_btc_more_address_settings"), &imgAddressType,
+                                        AddressSettingsHandler, NULL, true);
+            lv_obj_align(btn, LV_ALIGN_TOP_MID, 0, 120 + 476);
+#endif
         default:
             break;
         }
@@ -461,6 +560,14 @@ lv_obj_t* CreateUTXOReceiveQRCode(lv_obj_t* parent, uint16_t w, uint16_t h)
     lv_obj_add_flag(qrcode, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(qrcode, GuiFullscreenModeHandler, LV_EVENT_CLICKED, NULL);
     lv_qrcode_update(qrcode, "", 0);
+#ifdef WEB3_VERSION
+    if (w == 420 && h == 420 && g_chainCard == HOME_WALLET_CARD_BTC) {
+        g_fullscreenTestnetWarningLabel = GuiCreateIllustrateLabel(parent, _("This is a testnet address"));
+        lv_obj_set_style_text_color(g_fullscreenTestnetWarningLabel, RED_COLOR, LV_PART_MAIN);
+        lv_obj_align(g_fullscreenTestnetWarningLabel, LV_ALIGN_TOP_MID, 0, 96);
+        SetTestnetWarningVisible(g_fullscreenTestnetWarningLabel, g_btcShowAsTestAddress);
+    }
+#endif
     return qrcode;
 }
 
@@ -475,6 +582,13 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
     lv_obj_align(g_utxoReceiveWidgets.qrCodeCont, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(g_utxoReceiveWidgets.qrCodeCont, DARK_BG_COLOR, LV_PART_MAIN);
     lv_obj_set_style_radius(g_utxoReceiveWidgets.qrCodeCont, 24, LV_PART_MAIN);
+
+#ifdef WEB3_VERSION
+    g_testnetWarningLabel = GuiCreateIllustrateLabel(g_utxoReceiveWidgets.qrCodeCont, _("This is a testnet address"));
+    lv_obj_set_style_text_color(g_testnetWarningLabel, RED_COLOR, LV_PART_MAIN);
+    lv_obj_align(g_testnetWarningLabel, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_add_flag(g_testnetWarningLabel, LV_OBJ_FLAG_HIDDEN);
+#endif
 
     yOffset += 36;
     g_utxoReceiveWidgets.qrCode = CreateUTXOReceiveQRCode(g_utxoReceiveWidgets.qrCodeCont, 336, 336);
@@ -710,7 +824,11 @@ static bool IsAddrTypeSelectChanged()
 
 static void UpdateConfirmAddrTypeBtn(void)
 {
-    if (IsAddrTypeSelectChanged()) {
+    bool isChanged = IsAddrTypeSelectChanged();
+#ifdef WEB3_VERSION
+    isChanged = isChanged || IsBtcTestAddressPreviewChanged();
+#endif
+    if (isChanged) {
         lv_obj_set_style_bg_opa(g_utxoReceiveWidgets.confirmAddrTypeBtn, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_text_opa(lv_obj_get_child(g_utxoReceiveWidgets.confirmAddrTypeBtn, 0), LV_OPA_COVER, LV_PART_MAIN);
     } else {
@@ -732,20 +850,33 @@ static void ConfirmAddrIndexHandler(lv_event_t *e)
 static void ConfirmAddrTypeHandler(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
-
-    if (code == LV_EVENT_CLICKED && IsAddrTypeSelectChanged()) {
-        g_addressType[g_currentAccountIndex] = g_selectType;
-#ifdef BTC_ONLY
-        if (GetIsTestNet()) {
-            SetAccountTestReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
-        } else {
-            SetAccountReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
-        }
+    bool isAddrTypeChanged = IsAddrTypeSelectChanged();
+#ifdef WEB3_VERSION
+    bool isBtcTestAddressChanged = IsBtcTestAddressPreviewChanged();
 #else
-        SetAccountReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
+    bool isBtcTestAddressChanged = false;
 #endif
-        g_selectIndex = 0;
-        SetCurrentSelectIndex(g_selectIndex);
+
+    if (code == LV_EVENT_CLICKED && (isAddrTypeChanged || isBtcTestAddressChanged)) {
+#ifdef WEB3_VERSION
+        if (g_chainCard == HOME_WALLET_CARD_BTC) {
+            g_btcShowAsTestAddress = g_btcPreviewShowAsTestAddress;
+        }
+#endif
+        if (isAddrTypeChanged) {
+            g_addressType[g_currentAccountIndex] = g_selectType;
+#ifdef BTC_ONLY
+            if (GetIsTestNet()) {
+                SetAccountTestReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
+            } else {
+                SetAccountReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
+            }
+#else
+            SetAccountReceivePath(GetCoinCardByIndex(g_chainCard)->coin, g_selectType);
+#endif
+            g_selectIndex = 0;
+            SetCurrentSelectIndex(g_selectIndex);
+        }
         ReturnHandler(e);
     }
 }
@@ -782,7 +913,6 @@ static void GuiCreateSwitchAddressButtons(lv_obj_t *parent)
 
 static void Highlight(char *address, uint8_t highlightStart, uint8_t highlightEnd, char *coloredAddress, uint32_t maxLen)
 {
-#ifndef COMPILE_SIMULATOR
     uint8_t addressLength = strnlen_s(address, ADDRESS_MAX_LEN);
     if (address == NULL || coloredAddress == NULL || highlightStart > highlightEnd || highlightEnd > addressLength) {
         return;
@@ -798,7 +928,6 @@ static void Highlight(char *address, uint8_t highlightStart, uint8_t highlightEn
     strcpy_s(afterHighlight, addressLength, &address[highlightEnd]);
 
     snprintf_s(coloredAddress, maxLen, "%s#F5870A %s#%s", beforeHighlight, highlight, afterHighlight);
-#endif
 }
 
 #ifndef BTC_ONLY
@@ -812,7 +941,18 @@ static void RefreshDefaultAddress(void)
     ChainType chainType;
     chainType = GetChainTypeByIndex(g_selectType);
 
-    uint8_t highlightEnd = (chainType == XPUB_TYPE_BTC_NATIVE_SEGWIT || chainType == XPUB_TYPE_BTC_TAPROOT) ? 4 : 1;
+    uint8_t highlightEnd = 0;
+    switch (chainType) {
+    case XPUB_TYPE_BTC_NATIVE_SEGWIT:
+    case XPUB_TYPE_BTC_TAPROOT:
+#ifdef WEB3_VERSION
+    case XPUB_TYPE_LTC_NATIVE_SEGWIT:
+#endif
+        highlightEnd = 4;
+        break;
+    default:
+        highlightEnd = 1;
+    }
     ModelGetUtxoAddress(0, &addressDataItem);
     CutAndFormatString(address, sizeof(address), addressDataItem.address, 24);
     Highlight(address, 0, highlightEnd, highlightAddress, sizeof(highlightAddress));
@@ -866,7 +1006,31 @@ static void ShowEgAddressCont(lv_obj_t *egCont)
     lv_obj_t *prevLabel, *label;
     int egContHeight = 80 + 12;
 #ifndef BTC_ONLY
-    label = GuiCreateNoticeLabel(egCont, g_derivationPathDescs[g_selectType]);
+#ifdef WEB3_VERSION
+    if (g_chainCard == HOME_WALLET_CARD_BTC && g_btcPreviewShowAsTestAddress) {
+        switch (g_selectType) {
+        case BTC_NATIVE_SEGWIT:
+            label = GuiCreateNoticeLabel(egCont, _("derivation_path_btc_test_net_1_desc"));
+            break;
+        case BTC_TAPROOT:
+            label = GuiCreateNoticeLabel(egCont, _("derivation_path_btc_test_net_4_desc"));
+            break;
+        case BTC_NESTED_SEGWIT:
+            label = GuiCreateNoticeLabel(egCont, _("derivation_path_btc_test_net_2_desc"));
+            break;
+        case BTC_LEGACY:
+            label = GuiCreateNoticeLabel(egCont, _("derivation_path_btc_test_net_3_desc"));
+            break;
+        default:
+            label = GuiCreateNoticeLabel(egCont, g_derivationPathDescs[g_selectType]);
+            break;
+        }
+    } else {
+#endif
+        label = GuiCreateNoticeLabel(egCont, g_derivationPathDescs[g_selectType]);
+#ifdef WEB3_VERSION
+    }
+#endif
 #else
     if (GetIsTestNet()) {
         label = GuiCreateNoticeLabel(egCont, g_testNetderivationPathDescs[g_selectType]);
@@ -920,17 +1084,45 @@ static void GetChangePathLabelHint(char* hint, uint32_t maxLen)
     switch (g_chainCard) {
     case HOME_WALLET_CARD_BTC:
         snprintf_s(hint, maxLen, "%s", _("derivation_path_select_btc"));
+        break;
+#ifdef WEB3_VERSION
+    case HOME_WALLET_CARD_LTC:
+        snprintf_s(hint, maxLen, "%s", _("derivation_path_select_ltc"));
         return;
+#endif
     default:
         break;
     }
 }
+
+#ifdef WEB3_VERSION
+static void BtcTestnetSwitchHandler(lv_event_t *e)
+{
+    lv_obj_t *sw = lv_event_get_target(e);
+    g_btcPreviewShowAsTestAddress = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    ShowEgAddressCont(g_egCont);
+    UpdateConfirmAddrTypeBtn();
+}
+#endif
 
 static void GuiCreateAddressSettingsWidget(lv_obj_t *parent)
 {
     if (g_derivationPathDescs == NULL) {
         return;
     }
+    uint16_t contHeight = 411;
+#ifdef BTC_ONLY
+    g_addressSettings = GetIsTestNet() ? g_testNetAddressSettings : g_mainNetAddressSettings;
+#elif WEB3_VERSION
+    if (g_chainCard == HOME_WALLET_CARD_LTC) {
+        contHeight = 208;
+        g_addressSettings = g_ltcAddressSettings;
+    } else {
+        g_addressSettings = g_mainNetAddressSettings;
+    }
+#else
+    g_addressSettings = g_mainNetAddressSettings;
+#endif
     lv_obj_t *cont, *line, *label;
     static lv_point_t points[2] = {{0, 0}, {360, 0}};
     char string[BUFFER_SIZE_64];
@@ -946,14 +1138,11 @@ static void GuiCreateAddressSettingsWidget(lv_obj_t *parent)
     lv_obj_set_style_text_opa(labelHint, LV_OPA_80, LV_PART_MAIN);
     lv_obj_align(labelHint, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    cont = GuiCreateContainerWithParent(scrollCont, 408, 411);
+    cont = GuiCreateContainerWithParent(scrollCont, 408, contHeight);
     lv_obj_align_to(cont, labelHint, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 24);
     lv_obj_set_style_bg_color(cont, WHITE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(cont, LV_OPA_10 + LV_OPA_2, LV_PART_MAIN);
     lv_obj_set_style_radius(cont, 24, LV_PART_MAIN);
-#ifdef BTC_ONLY
-    g_addressSettings = GetIsTestNet() ? g_testNetAddressSettings : g_mainNetAddressSettings;
-#endif
     for (uint32_t i = 0; i < g_addressSettingsNum; i++) {
         label = GuiCreateTextLabel(cont, g_addressSettings[i].title);
         lv_obj_align(label, LV_ALIGN_TOP_LEFT, 24, 20 + 103 * i);
@@ -985,8 +1174,34 @@ static void GuiCreateAddressSettingsWidget(lv_obj_t *parent)
     lv_obj_clear_flag(g_utxoReceiveWidgets.addressSettingsWidgets[g_addressType[g_currentAccountIndex]].checkedImg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(g_utxoReceiveWidgets.addressSettingsWidgets[g_addressType[g_currentAccountIndex]].uncheckedImg, LV_OBJ_FLAG_HIDDEN);
 
+    lv_obj_t *egAnchor = cont;
+#ifdef WEB3_VERSION
+    if (g_chainCard == HOME_WALLET_CARD_BTC) {
+        lv_obj_t *toggleCont = GuiCreateContainerWithParent(scrollCont, 408, 84);
+        lv_obj_align_to(toggleCont, cont, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 24);
+        lv_obj_set_style_bg_color(toggleCont, WHITE_COLOR, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(toggleCont, LV_OPA_10 + LV_OPA_2, LV_PART_MAIN);
+        lv_obj_set_style_radius(toggleCont, 24, LV_PART_MAIN);
+
+        lv_obj_t *toggleLabel = GuiCreateTextLabel(toggleCont, _("Show as Testnet / Signet"));
+        lv_obj_align(toggleLabel, LV_ALIGN_LEFT_MID, 24, 0);
+
+        lv_obj_t *testnetSwitch = GuiCreateSwitch(toggleCont);
+        g_btcTestAddressSwitch = testnetSwitch;
+        lv_obj_align(testnetSwitch, LV_ALIGN_RIGHT_MID, -24, 0);
+        if (g_btcPreviewShowAsTestAddress) {
+            lv_obj_add_state(testnetSwitch, LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(testnetSwitch, LV_STATE_CHECKED);
+        }
+        lv_obj_add_event_cb(testnetSwitch, BtcTestnetSwitchHandler, LV_EVENT_VALUE_CHANGED, NULL);
+
+        egAnchor = toggleCont;
+    }
+#endif
+
     lv_obj_t *egCont = GuiCreateContainerWithParent(scrollCont, 408, 186);
-    lv_obj_align_to(egCont, cont, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 24);
+    lv_obj_align_to(egCont, egAnchor, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 24);
     lv_obj_set_style_bg_color(egCont, WHITE_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(egCont, LV_OPA_10 + LV_OPA_2, LV_PART_MAIN);
     lv_obj_set_style_radius(egCont, 24, LV_PART_MAIN);
@@ -1164,6 +1379,11 @@ static void TutorialHandler(lv_event_t *e)
     if (g_chainCard == HOME_WALLET_CARD_BTC) {
         TUTORIAL_LIST_INDEX_ENUM tIndex = TUTORIAL_BTC_RECEIVE;
         GuiFrameOpenViewWithParam(&g_tutorialView, &tIndex, sizeof(tIndex));
+#ifdef WEB3_VERSION
+    } else if (g_chainCard == HOME_WALLET_CARD_LTC) {
+        TUTORIAL_LIST_INDEX_ENUM tIndex = TUTORIAL_LTC_RECEIVE;
+        GuiFrameOpenViewWithParam(&g_tutorialView, &tIndex, sizeof(tIndex));
+#endif
     }
 }
 
@@ -1211,6 +1431,8 @@ static void AddressSettingsCheckHandler(lv_event_t *e)
     lv_obj_t *checkBox = lv_event_get_target(e);
 #ifdef BTC_ONLY
     g_addressSettings = GetIsTestNet() ? g_testNetAddressSettings : g_mainNetAddressSettings;
+#elif WEB3_VERSION
+    g_addressSettings = g_chainCard == HOME_WALLET_CARD_LTC ? g_ltcAddressSettings : g_addressSettings;
 #endif
     for (uint32_t i = 0; i < g_addressSettingsNum; i++) {
         UpdateAddrTypeCheckbox(i, checkBox == g_utxoReceiveWidgets.addressSettingsWidgets[i].checkBox);
@@ -1425,7 +1647,12 @@ static ChainType GetChainTypeByIndex(uint32_t index)
     }
 #ifdef WEB3_VERSION
     case HOME_WALLET_CARD_LTC:
-        return XPUB_TYPE_LTC;
+        if (index == 0) {
+            return XPUB_TYPE_LTC_NATIVE_SEGWIT;
+        } else {
+            return XPUB_TYPE_LTC;
+        }
+        break;
     case HOME_WALLET_CARD_DASH:
         return XPUB_TYPE_DASH;
     case HOME_WALLET_CARD_BCH:
@@ -1465,12 +1692,14 @@ static void GetRootHdPath(char *hdPath, uint32_t maxLen)
             return;
         }
         g_addressSettings = GetIsTestNet() ? g_testNetAddressSettings : g_mainNetAddressSettings;
+#elif WEB3_VERSION
+        g_addressSettings = g_chainCard == HOME_WALLET_CARD_LTC ? g_ltcAddressSettings : g_mainNetAddressSettings;
 #endif
         strcpy_s(hdPath, maxLen, g_addressSettings[addrType].path);
         break;
 #ifdef WEB3_VERSION
     case HOME_WALLET_CARD_LTC:
-        strcpy_s(hdPath, maxLen, g_chainPathItems[1].path);
+        strcpy_s(hdPath, maxLen, g_addressSettings[addrType].path);
         break;
     case HOME_WALLET_CARD_DASH:
         strcpy_s(hdPath, maxLen, g_chainPathItems[2].path);
@@ -1512,7 +1741,14 @@ static void ModelGetUtxoAddress(uint32_t index, AddressDataItem_t *item)
     ASSERT(xPub);
     SimpleResponse_c_char *result;
     do {
-        result = utxo_get_address(hdPath, xPub);
+#ifdef WEB3_VERSION
+        if (IsBtcTestAddressEnabled()) {
+            result = btcoin_get_address_with_network(hdPath, xPub, "bitcoin-testnet");
+        } else
+#endif
+        {
+            result = utxo_get_address(hdPath, xPub);
+        }
         CHECK_CHAIN_BREAK(result);
     } while (0);
     strcpy_s(item->address, ADDRESS_MAX_LEN, result->data);
