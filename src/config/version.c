@@ -87,14 +87,8 @@ void GetBootVersionNumber(char *version)
 #ifndef COMPILE_SIMULATOR
 bool NeedUpdateBoot(void)
 {
-    uint32_t major, minor, build;
-    if (GetBootSoftwareVersion(&major, &minor, &build) == false) {
-        return true;
-    }
-    if (major == 0 && minor == 3 && build == 0) {
-        return false;
-    }
-    return true;
+    // ForgeBox manages its own bootloader; never run Keystone's boot-update flow.
+    return false;
 }
 #endif
 
