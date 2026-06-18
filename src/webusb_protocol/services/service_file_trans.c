@@ -22,6 +22,7 @@
 #include "data_parser_task.h"
 #include "screen_manager.h"
 #include "power_manager.h"
+#include "version.h"
 
 #define TYPE_FILE_INFO_FILE_NAME    1
 #define TYPE_FILE_INFO_FILE_SIZE    2
@@ -39,7 +40,7 @@
 #define MAX_FILE_SIZE               (8 * 1024 * 1024)       // update max file size
 #define MAX_FILE_NAME_LENGTH        32
 #define FILE_TRANS_TIME_OUT         10000
-#define DEFAULT_FILE_NAME           "keystone3.bin"
+#define DEFAULT_FILE_NAME           OTA_BIN_FILE_NAME
 
 #define CHECK_POINTER(ptr) do { \
     if ((ptr) == NULL) { \
@@ -143,7 +144,7 @@ static int ValidateAndSetFileName(Tlv_t *tlvArray, FileTransInfo_t *fileTransInf
         return -1;
     }
 
-    if ((strcmp("keystone3.bin", tlvArray->pValue) != 0) && (strcmp("nft.bin", tlvArray->pValue) != 0)) {
+    if ((strcmp(DEFAULT_FILE_NAME, tlvArray->pValue) != 0) && (strcmp("nft.bin", tlvArray->pValue) != 0)) {
         return -1;
     }
     int written = snprintf(fileTransInfo->fileName, MAX_FILE_NAME_LENGTH + 3, "1:%s", tlvArray->pValue);

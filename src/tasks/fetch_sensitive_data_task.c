@@ -5,6 +5,8 @@
 #include "stdio.h"
 #include "string.h"
 #include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include "user_memory.h"
 #include "user_msg.h"
 #include "user_fatfs.h"
@@ -20,6 +22,16 @@
 static void FetchSensitiveDataTask(void *argument);
 
 osThreadId_t g_sensitiveDataTaskHandle;
+
+// Strong override of FreeRTOS's weak hook. With configCHECK_FOR_STACK_OVERFLOW=2 this fires on
+// the canary check; fail loudly instead of the previous silent freeze (no fallback).
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char *pcTaskName)
+{
+    (void)xTask;
+    printf("FATAL: stack overflow in task '%s'\r\n", pcTaskName ? pcTaskName : "?");
+    taskDISABLE_INTERRUPTS();
+    for (;;) {}
+}
 
 void CreateFetchSensitiveDataTask(void)
 {

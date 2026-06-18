@@ -125,3 +125,11 @@ zeroize = { version = "1.8.2", default-features = false }
 parity-scale-codec = { version = "3.6.9", default-features = false }
 parity-scale-codec-derive = { version = "3.6.9", default-features = false }
 # third party dependencies end
+
+# Temporary: point at the local stack-streaming ML-DSA branch of qp-rusty-crystals
+# (branch `stack-streaming-matrix`). Streams matrix A from rho instead of materializing the
+# full ~56 KB [Polyvecl; K], so ML-DSA-87 keygen/sign fits in a normal task stack on device.
+# Revert to crates.io once the streaming changes are published.
+[patch.crates-io]
+qp-rusty-crystals-dilithium = { path = "../../../qp-rusty-crystals/dilithium" }
+qp-rusty-crystals-hdwallet = { path = "../../../qp-rusty-crystals/hdwallet" }

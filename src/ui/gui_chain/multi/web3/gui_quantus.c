@@ -15,6 +15,13 @@
 #include "account_manager.h"
 #include "gui_chain_components.h"
 #include "stdio.h"
+#ifndef COMPILE_SIMULATOR
+#include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "user_memory.h"
+#include "assert.h"
+#endif
 
 static URParseResult *g_urResult = NULL;
 static URParseMultiResult *g_urMultiResult = NULL;
@@ -170,6 +177,95 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
     return NULL;
 }
 
+#ifndef COMPILE_SIMULATOR
+// ~192 KB PSRAM-backed stack: ML-DSA-87 signing needs ~110 KB, keygen ~50 KB, plus FFI/UR
+// framing margin. Sized off the thumbv7em stack-frame measurement (see qp-rusty-crystals
+// stack-check.sh); trim once the on-device high-water mark below confirms real usage.
+#define QUANTUS_CRYPTO_STACK_BYTES   (1024 * 192)
+
+typedef struct {
+    QuantusCryptoFunc_t fn;
+    void *ctx;
+    osSemaphoreId_t done;
+} QuantusCryptoJob_t;
+
+static osThreadId_t g_quantusCryptoTask = NULL;
+static osMessageQueueId_t g_quantusCryptoQueue = NULL;
+
+static void QuantusCryptoThread(void *arg)
+{
+    (void)arg;
+    QuantusCryptoJob_t job;
+    while (1) {
+        if (osMessageQueueGet(g_quantusCryptoQueue, &job, NULL, osWaitForever) != osOK) {
+            continue;
+        }
+        if (job.fn) {
+            job.fn(job.ctx);
+        }
+        UBaseType_t freeWords = uxTaskGetStackHighWaterMark(NULL);
+        printf("Quantus crypto stack high-water: %lu/%d bytes used\r\n",
+               (unsigned long)(QUANTUS_CRYPTO_STACK_BYTES - freeWords * sizeof(StackType_t)),
+               QUANTUS_CRYPTO_STACK_BYTES);
+        if (job.done) {
+            osSemaphoreRelease(job.done);
+        }
+    }
+}
+
+static void QuantusCryptoTaskEnsure(void)
+{
+    if (g_quantusCryptoTask != NULL) {
+        return;
+    }
+    g_quantusCryptoQueue = osMessageQueueNew(2, sizeof(QuantusCryptoJob_t), NULL);
+    StaticTask_t *tcb = (StaticTask_t *)SRAM_MALLOC(sizeof(StaticTask_t));
+    void *stack = ExtMalloc(QUANTUS_CRYPTO_STACK_BYTES);
+    const osThreadAttr_t attr = {
+        .name = "QuantusCrypto",
+        .cb_mem = tcb,
+        .cb_size = sizeof(StaticTask_t),
+        .stack_mem = stack,
+        .stack_size = QUANTUS_CRYPTO_STACK_BYTES,
+        .priority = osPriorityBelowNormal,
+    };
+    g_quantusCryptoTask = osThreadNew(QuantusCryptoThread, NULL, &attr);
+    ASSERT(g_quantusCryptoTask != NULL);
+}
+#endif
+
+void QuantusRunCrypto(QuantusCryptoFunc_t fn, void *ctx)
+{
+#ifdef COMPILE_SIMULATOR
+    if (fn) {
+        fn(ctx);
+    }
+#else
+    QuantusCryptoTaskEnsure();
+    osSemaphoreId_t done = osSemaphoreNew(1, 0, NULL);
+    QuantusCryptoJob_t job = { .fn = fn, .ctx = ctx, .done = done };
+    osMessageQueuePut(g_quantusCryptoQueue, &job, 0, osWaitForever);
+    osSemaphoreAcquire(done, osWaitForever);
+    osSemaphoreDelete(done);
+#endif
+}
+
+typedef struct {
+    void *data;
+    char *mnemonic;
+    char *passphrase;
+    char *path;
+    uint8_t *mfp;
+    uint32_t mfpLen;
+    UREncodeResult *result;
+} QuantusSignJobCtx;
+
+static void QuantusSignJob(void *p)
+{
+    QuantusSignJobCtx *c = (QuantusSignJobCtx *)p;
+    c->result = quantus_sign_tx(c->data, c->mnemonic, c->passphrase, c->path, c->mfp, c->mfpLen);
+}
+
 UREncodeResult *GuiGetQuantusSignQrCodeData(void)
 {
     bool enable = IsPreviousLockScreenEnable();
@@ -204,7 +300,12 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
         GetMasterFingerPrint(mfp);
         
         if (mnemonic) {
-            encodeResult = quantus_sign_tx(data, mnemonic, passphrase, path, mfp, sizeof(mfp));
+            QuantusSignJobCtx ctx = {
+                .data = data, .mnemonic = mnemonic, .passphrase = passphrase,
+                .path = path, .mfp = mfp, .mfpLen = sizeof(mfp), .result = NULL,
+            };
+            QuantusRunCrypto(QuantusSignJob, &ctx);
+            encodeResult = ctx.result;
             memset_s(mnemonic, strlen(mnemonic), 0, strlen(mnemonic));
             SRAM_FREE(mnemonic);
         }

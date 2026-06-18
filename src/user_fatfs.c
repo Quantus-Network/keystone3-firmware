@@ -10,6 +10,7 @@
 #include "sha256.h"
 #include "gui_setup_widgets.h"
 #include "account_manager.h"
+#include "version.h"
 
 #define MAX_FILE_CONTENT_LEN 1000000
 #define MAX_FILE_SIZE_LIST (1024 * 256)
@@ -159,7 +160,7 @@ int FatfsFileCopy(const TCHAR* source, const TCHAR* dest)
         data = SRAM_MALLOC(FATFS_COPY_BUFFER_SIZE);
         totalSize = 0;
         for (copyOffset = 0; copyOffset <= fileSize; copyOffset += FATFS_COPY_BUFFER_SIZE) {
-            if (strcmp(source, "0:/keystone3.bin") == 0 && !SdCardInsert()) {
+            if (strcmp(source, SD_CARD_OTA_BIN_PATH) == 0 && !SdCardInsert()) {
                 res = ERR_GENERAL_FAIL;
                 break;
             }

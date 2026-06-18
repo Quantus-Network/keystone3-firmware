@@ -50,8 +50,7 @@
 #define APP_ADDR                            (0x1001000 + 0x80000)   //108 1000
 #define APP_CHECK_START_ADDR                (0x1400000)
 #define APP_END_ADDR                        (0x2000000)
-#define SD_CARD_OTA_FILE_PATH               "0:/keystone3.bin"
-#define INTERNAL_STORAGE_OTA_FILE_PATH      "1:/keystone3.bin"
+#define INTERNAL_STORAGE_OTA_FILE_PATH      "1:/" OTA_BIN_FILE_NAME
 
 #define MODEL_WRITE_SE_HEAD                 do {                                \
         ret = CHECK_BATTERY_LOW_POWER();                                        \
@@ -1461,7 +1460,7 @@ static int32_t ModelCopySdCardOta(const void *inData, uint32_t inDataLen)
 #ifndef COMPILE_SIMULATOR
     static uint8_t walletAmount;
     SetPageLockScreen(false);
-    int32_t ret = FatfsFileCopy(SD_CARD_OTA_FILE_PATH, INTERNAL_STORAGE_OTA_FILE_PATH);
+    int32_t ret = FatfsFileCopy(SD_CARD_OTA_BIN_PATH, INTERNAL_STORAGE_OTA_FILE_PATH);
     if (ret == SUCCESS_CODE) {
         GetExistAccountNum(&walletAmount);
         if (walletAmount == 0) {

@@ -29,6 +29,22 @@
 
 extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphrase, char *path);
 
+#ifdef WEB3_VERSION
+#include "gui_quantus.h"
+typedef struct {
+    char *mnemonic;
+    char *passphrase;
+    char *path;
+    SimpleResponse_c_char *result;
+} QuantusAddrJobCtx;
+
+static void QuantusAddrJob(void *p)
+{
+    QuantusAddrJobCtx *c = (QuantusAddrJobCtx *)p;
+    c->result = quantus_get_address(c->mnemonic, c->passphrase, c->path);
+}
+#endif
+
 #define GENERAL_ADDRESS_INDEX_MAX                           999999999
 #define LEDGER_LIVE_ADDRESS_INDEX_MAX                       9
 #define ADDRESS_LONE_MODE_LEN                               (24)
@@ -976,7 +992,11 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
                     snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0'/0'", index);
                     char *passphrase = GetPassphrase(GetCurrentAccountIndex());
                     printf("quantus_get_address: path='%s', mnemonic_len=%zu\n", hdPath, strnlen_s(mnemonic, 512));
-                    result = quantus_get_address(mnemonic, passphrase, hdPath);
+                    QuantusAddrJobCtx addrCtx = {
+                        .mnemonic = mnemonic, .passphrase = passphrase, .path = hdPath, .result = NULL,
+                    };
+                    QuantusRunCrypto(QuantusAddrJob, &addrCtx);
+                    result = addrCtx.result;
                     SRAM_FREE(mnemonic);
                 }
             }

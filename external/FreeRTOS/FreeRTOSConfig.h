@@ -58,6 +58,9 @@ extern uint32_t SystemCoreClock;
 #define configSUPPORT_DYNAMIC_ALLOCATION            1
 #define configUSE_IDLE_HOOK                         0
 #define configUSE_TICK_HOOK                         0
+/* Detect stack overflows loudly (canary check on every context switch) instead of the
+ * previous silent freeze. Requires vApplicationStackOverflowHook (see tasks). */
+#define configCHECK_FOR_STACK_OVERFLOW              2
 #define configCPU_CLOCK_HZ                          ( 204000000 )
 #define configTICK_RATE_HZ                          ((TickType_t)1000)
 #define configMAX_PRIORITIES                        ( 56 )

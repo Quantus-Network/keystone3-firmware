@@ -1,7 +1,8 @@
 #ifndef _VERSION_H
 #define _VERSION_H
 
-#define SD_CARD_OTA_BIN_PATH                "0:/keystone3.bin"
+#define OTA_BIN_FILE_NAME                   "forgebox.bin"
+#define SD_CARD_OTA_BIN_PATH                "0:/" OTA_BIN_FILE_NAME
 
 #define SOFTWARE_VERSION_MAX_LEN            (32)
 #define SOFTWARE_VERSION_MAJOR              12
