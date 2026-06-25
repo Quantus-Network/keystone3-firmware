@@ -81,6 +81,11 @@ this repo (build.py)              forgebox-cli                 device
 > you must re-sign `mh1903_full.bin` with **your own** key via `forgebox sign`.
 > [VERIFIED — `ota_maker()` in `build.py`; ForgeBox signing in forgebox README]
 
+> Shortcut: `./build_release.sh --sign` runs Stages 1–2 in one command (build the
+> production multi-coin firmware, incl. Quantus, then sign `mh1903_full.bin` with
+> your key into `build/forgebox.bin`). A plain `./build_release.sh` only builds —
+> it does **not** produce `forgebox.bin`, because signing is opt-in (`--sign`).
+
 The full, concrete, step-by-step procedure (including signing and loading) is in
 [`install-workflow.md`](./install-workflow.md).
 

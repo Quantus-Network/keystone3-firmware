@@ -59,15 +59,44 @@ forgebox status
 
 ## Step 2: build the firmware (this repo) [VERIFIED]
 
-Run the build at the repo root. This fork supports a **`quantus`** build type
+### Shortcut: `build_release.sh` (build + optional sign) — recommended
+
+This repo ships `build_release.sh`, which wraps Steps 2–3 into one command and
+builds the **production multi-coin** firmware (Quantus is included in the
+multi-coin set, matching the simulator build):
+
+```bash
+# From the repo root.
+
+# Build only -> build/mh1903_full.bin (+ build/keystone3.bin, official key).
+# Does NOT produce forgebox.bin.
+./build_release.sh
+
+# Build AND sign with your registered key -> build/forgebox.bin (ready for SD card).
+./build_release.sh --sign
+
+# Use a different signing key (default: ~/.forgebox/keys/private.pem):
+FORGEBOX_KEY=/path/to/private.pem ./build_release.sh --sign
+```
+
+> **Why a plain build has no `forgebox.bin`:** signing is opt-in. `build_release.sh`
+> (and `build.py`) only produce the unsigned padded image `mh1903_full.bin` plus
+> `keystone3.bin` (signed with Keystone's *official* key — not valid for your
+> ForgeBox). `forgebox.bin` is `mh1903_full.bin` re-signed with *your* key, which
+> only happens with `--sign` (it requires your `private.pem` and the `forgebox`
+> CLI). The manual equivalent is Step 3 below.
+
+### Manual build (underlying `build.py`)
+
+Run the build at the repo root. This fork also supports a **`quantus`** build type
 (added in `build.py`: `-DQUANTUS=true`), alongside `general`, `btc_only`, and
 `cypherpunk`.
 
 ```bash
 # From the repo root: /Users/elohim/play/quantus-network/keystone/keystone3-firmware
 
-# Quantus firmware (this fork's custom type):
-python3 build.py -t quantus -e production
+# Production multi-coin (incl. Quantus) — what build_release.sh runs:
+python3 build.py -e production
 
 # (other types, for reference)
 # python3 build.py                       # general / multi-coin (dev)
@@ -78,7 +107,7 @@ Or build via Docker (reproducible env — see `docs/verify.md`):
 
 ```bash
 docker run -v $(pwd):/keystone3-firmware keystonehq/keystone3_baker:1.0.2 \
-  python3 build.py -t quantus -e production
+  python3 build.py -e production
 ```
 
 ### Build artifacts [VERIFIED — `build.py`, `tools/padding_bin_file/padding_bin_file.py`, `docs/verify.md`]
@@ -146,17 +175,22 @@ enter **ForgeBox Recovery Mode**, then flash another firmware image from there.
 ## Quick reference (copy/paste, assuming key already registered)
 
 ```bash
-# 1. Build (Quantus firmware) at repo root
-python3 build.py -t quantus -e production
+# 1. Build AND sign in one step (production multi-coin, incl. Quantus).
+#    Produces build/forgebox.bin signed with ~/.forgebox/keys/private.pem.
+./build_release.sh --sign
 
-# 2. Sign the padded image with your registered key
+# 2. Copy build/forgebox.bin to a FAT32 MicroSD card, insert into ForgeBox,
+#    and run the on-device firmware upgrade flow.
+```
+
+Or the manual equivalent (build, then sign):
+
+```bash
+python3 build.py -e production
 forgebox sign \
   --s ./build/mh1903_full.bin \
   --d ./build/forgebox.bin \
   --key ~/.forgebox/keys/private.pem
-
-# 3. Copy build/forgebox.bin to a FAT32 MicroSD card, insert into ForgeBox,
-#    and run the on-device firmware upgrade flow.
 ```
 
 ---
