@@ -109,6 +109,13 @@ static void GuiCreateSignatureQRCode(lv_obj_t *parent)
 #if BTC_ONLY
         showPending = false;
 #endif
-        GuiAnimatingQRCodeInitWithCustomSize(qrCont, func, showPending, 336, 336, (char *)_("sign_transaction"));
+        char *subtitle = NULL;
+#ifdef WEB3_VERSION
+        // ML-DSA signing can take ~30-40s on device; tell the user so they don't think it hung.
+        if (g_viewType == QuantusTx) {
+            subtitle = (char *)_("quantus_signing_time_notice");
+        }
+#endif
+        GuiAnimatingQRCodeInitWithCustomSizeAndSubtitle(qrCont, func, showPending, 336, 336, (char *)_("sign_transaction"), subtitle);
     }
 }

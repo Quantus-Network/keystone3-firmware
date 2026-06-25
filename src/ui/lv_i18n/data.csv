@@ -744,6 +744,8 @@ modal ,20,generating_qr_codes,Generating QR Codes,Генерируются QR-к
 ,24,show_checksum,Show checksum,Показать контрольную сумму,체크섬 표시,显示校验和,Mostrar suma de comprobación,Zeige Prüfsumme,チェックサムを表示
 ,24,sign_transaction,Transaction Signing,Подписание транзакции,트랜잭션 서명,签名,Firma de transacción,Transaktionsunterzeichnung,取引の署名
 ,20,sign_transaction_desc,Please Wait...,Подождите...,기다려주세요...,请稍等...,Favor de esperar...,Bitte warten...,お待ちください...
+,20,quantus_signing_time_notice,This may take up to 40 seconds,This may take up to 40 seconds,This may take up to 40 seconds,This may take up to 40 seconds,This may take up to 40 seconds,This may take up to 40 seconds,This may take up to 40 seconds
+,20,quantus_address_generating,Generating address (up to 15s),Generating address (up to 15s),Generating address (up to 15s),Generating address (up to 15s),Generating address (up to 15s),Generating address (up to 15s),Generating address (up to 15s)
 ,20,please_enter_passcode,Please Enter Passcode,Введите код-пароль,비밀번호를 입력해주세요,请输入密码,Por favor ingresa el código de acceso,Bitte Passcode eingeben,パスコードを入力してください.
 loading,24,prepare_wallet_hint,Preparing Wallet,Подготовка кошелька,지갑 준비 중,准备钱包,Preparando billetera,Brieftasche vorbereiten,財布の準備
 ,20,prepare_wallet_first_step,New chains support detected,Обнаружены новые сети,새 체인 지원이 감지됨,检测到的新区块链支持,Nuevo soporte de cadenas detectado,Neue Kettenunterstützung erkannt,新しいチェーンのサポートが検出されました.

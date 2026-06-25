@@ -31,6 +31,10 @@ extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphra
 
 #ifdef WEB3_VERSION
 #include "gui_quantus.h"
+#include "gui_pending_hintbox.h"
+#include "gui_api.h"
+#include "fetch_sensitive_data_task.h"
+
 typedef struct {
     char *mnemonic;
     char *passphrase;
@@ -42,6 +46,126 @@ static void QuantusAddrJob(void *p)
 {
     QuantusAddrJobCtx *c = (QuantusAddrJobCtx *)p;
     c->result = quantus_get_address(c->mnemonic, c->passphrase, c->path);
+}
+
+// Quantus ML-DSA address derivation is slow (~10s on device) and needs the PIN, so derived
+// addresses are cached: a cache hit lets us show the address immediately without prompting for the
+// PIN at all. Addresses are public, so caching them is not a secrets concern. Entries are keyed by
+// the master fingerprint (which captures account + passphrase identity), so the cache auto-
+// invalidates on any wallet/passphrase change and can never surface a stale address.
+#define QUANTUS_ADDR_CACHE_SIZE 16
+typedef struct {
+    bool valid;
+    uint8_t mfp[4];
+    uint32_t index;
+    char address[ADDRESS_MAX_LEN];
+} QuantusAddrCacheEntry_t;
+static QuantusAddrCacheEntry_t g_quantusAddrCache[QUANTUS_ADDR_CACHE_SIZE];
+
+// Result of an off-UI-thread derivation, consumed by GuiStandardReceiveQuantusAddressReady.
+static char g_quantusAsyncAddr[ADDRESS_MAX_LEN];
+static uint32_t g_quantusAsyncIndex;
+static bool g_quantusAsyncOk;
+// Set when the PIN was entered to derive an address; tells the completion handler to wipe the PIN
+// from the secret cache once derivation finishes, so it does not linger in memory.
+static bool g_quantusClearPinAfterDerive = false;
+
+static bool QuantusAddrCacheGet(uint32_t index, char *out, uint32_t outLen)
+{
+    uint8_t mfp[4];
+    GetMasterFingerPrint(mfp);
+    for (uint32_t i = 0; i < QUANTUS_ADDR_CACHE_SIZE; i++) {
+        if (g_quantusAddrCache[i].valid && g_quantusAddrCache[i].index == index &&
+                memcmp(g_quantusAddrCache[i].mfp, mfp, 4) == 0) {
+            strcpy_s(out, outLen, g_quantusAddrCache[i].address);
+            return true;
+        }
+    }
+    return false;
+}
+
+static void QuantusAddrCachePut(uint32_t index, const char *address)
+{
+    uint8_t mfp[4];
+    GetMasterFingerPrint(mfp);
+    uint32_t slot = QUANTUS_ADDR_CACHE_SIZE;
+    for (uint32_t i = 0; i < QUANTUS_ADDR_CACHE_SIZE; i++) {
+        if (g_quantusAddrCache[i].valid && g_quantusAddrCache[i].index == index &&
+                memcmp(g_quantusAddrCache[i].mfp, mfp, 4) == 0) {
+            slot = i;
+            break;
+        }
+        if (slot == QUANTUS_ADDR_CACHE_SIZE && !g_quantusAddrCache[i].valid) {
+            slot = i;
+        }
+    }
+    if (slot == QUANTUS_ADDR_CACHE_SIZE) {
+        slot = index % QUANTUS_ADDR_CACHE_SIZE;
+    }
+    g_quantusAddrCache[slot].valid = true;
+    memcpy_s(g_quantusAddrCache[slot].mfp, 4, mfp, 4);
+    g_quantusAddrCache[slot].index = index;
+    strcpy_s(g_quantusAddrCache[slot].address, ADDRESS_MAX_LEN, address);
+}
+
+// Derive the Quantus address for `index`. Heavy ML-DSA work runs on the dedicated PSRAM crypto
+// stack via QuantusRunCrypto. Fills outAddr (and outPath when non-NULL). Fails loudly, no fallback.
+static bool DeriveQuantusAddress(uint32_t index, char *outAddr, uint32_t addrLen, char *outPath, uint32_t pathLen)
+{
+    char *password = SecretCacheGetPassword();
+    uint8_t entropy[ENTROPY_MAX_LEN];
+    uint8_t entropyLen = 0;
+    char *mnemonic = NULL;
+    char hdPath[BUFFER_SIZE_128];
+    bool ok = false;
+
+    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+    if (ret != SUCCESS_CODE || entropyLen == 0) {
+        printf("DeriveQuantusAddress: GetAccountEntropy ret=%d entropyLen=%u\n", ret, entropyLen);
+        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        return false;
+    }
+    if (entropyLen != 16 && entropyLen != 20 && entropyLen != 24 && entropyLen != 28 && entropyLen != 32) {
+        printf("DeriveQuantusAddress: invalid entropy length %u\n", entropyLen);
+        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        return false;
+    }
+    ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
+    memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+    if (ret != SUCCESS_CODE || mnemonic == NULL) {
+        printf("DeriveQuantusAddress: bip39_mnemonic_from_bytes ret=%d\n", ret);
+        return false;
+    }
+    snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0'/0'", index);
+    char *passphrase = GetPassphrase(GetCurrentAccountIndex());
+    QuantusAddrJobCtx ctx = { .mnemonic = mnemonic, .passphrase = passphrase, .path = hdPath, .result = NULL };
+    QuantusRunCrypto(QuantusAddrJob, &ctx);
+    SimpleResponse_c_char *result = ctx.result;
+    if (result != NULL && result->error_code == 0 && result->data != NULL) {
+        strcpy_s(outAddr, addrLen, result->data);
+        if (outPath != NULL) {
+            strcpy_s(outPath, pathLen, hdPath);
+        }
+        ok = true;
+    } else {
+        printf("DeriveQuantusAddress: quantus_get_address failed err=%d\n", result ? result->error_code : -1);
+    }
+    if (result != NULL) {
+        free_simple_response_c_char(result);
+    }
+    SRAM_FREE(mnemonic);
+    return ok;
+}
+
+// Runs on the background task (true concurrency on device, deferred on simulator) so the UI thread
+// stays free to animate the loading spinner during the long derivation.
+static int32_t QuantusAddressBgFunc(const void *inData, uint32_t inDataLen)
+{
+    (void)inDataLen;
+    g_quantusAsyncIndex = *(const uint32_t *)inData;
+    g_quantusAsyncOk = DeriveQuantusAddress(g_quantusAsyncIndex, g_quantusAsyncAddr, sizeof(g_quantusAsyncAddr), NULL, 0);
+    GuiApiEmitSignal(SIG_QUANTUS_ADDRESS_READY, NULL, 0);
+    return SUCCESS_CODE;
 }
 #endif
 
@@ -448,6 +572,15 @@ void GuiStandardReceiveInit(uint8_t chain)
 
 void GuiStandardReceiveDeInit(void)
 {
+#ifdef WEB3_VERSION
+    // Remove the address-generating spinner if we leave the screen mid-derivation.
+    GuiPendingHintBoxRemove();
+    // If we leave before an in-flight derivation reports back, don't leave the PIN in memory.
+    if (g_quantusClearPinAfterDerive) {
+        ClearSecretCache();
+        g_quantusClearPinAfterDerive = false;
+    }
+#endif
     GUI_DEL_OBJ(g_standardReceiveWidgets.moreCont)
     GUI_DEL_OBJ(g_standardReceiveWidgets.attentionCont)
     GUI_DEL_OBJ(g_standardReceiveWidgets.cont)
@@ -728,31 +861,17 @@ static void GuiCreateSwitchAddressButtons(lv_obj_t *parent)
     UpdateConfirmBtn();
 }
 
-static void RefreshQrCode(void)
+static void RenderReceiveAddress(AddressDataItem_t *addressDataItem)
 {
-    AddressDataItem_t addressDataItem;
-    memset(&addressDataItem, 0, sizeof(addressDataItem));
-
-#ifdef WEB3_VERSION
-    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
-        char *password = SecretCacheGetPassword();
-        if (password == NULL || password[0] == '\0') {
-            g_keyboardWidget = GuiCreateKeyboardWidget(g_standardReceiveWidgets.cont);
-            SetKeyboardWidgetSelf(g_keyboardWidget, &g_keyboardWidget);
-            static uint16_t sig = SIG_QUANTUS_VERIFY_PASSWORD;
-            SetKeyboardWidgetSig(g_keyboardWidget, &sig);
-            return;
-        }
+    if (g_standardReceiveWidgets.qrCode == NULL || !lv_obj_is_valid(g_standardReceiveWidgets.qrCode)) {
+        return;
     }
-#endif
-
-    ModelGetAddress(GetCurrentSelectIndex(), &addressDataItem);
-    printf("RefreshQrCode: chain=%d, address='%s', len=%zu\n", g_chainCard, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
-    if (addressDataItem.address[0] != '\0') {
-        lv_qrcode_update(g_standardReceiveWidgets.qrCode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+    printf("RenderReceiveAddress: chain=%d, address='%s', len=%zu\n", g_chainCard, addressDataItem->address, strnlen_s(addressDataItem->address, ADDRESS_MAX_LEN));
+    if (addressDataItem->address[0] != '\0') {
+        lv_qrcode_update(g_standardReceiveWidgets.qrCode, addressDataItem->address, strnlen_s(addressDataItem->address, ADDRESS_MAX_LEN));
         lv_obj_t *fullscreenQrcode = GuiFullscreenModeGetCreatedObjectWhenVisible();
         if (fullscreenQrcode) {
-            lv_qrcode_update(fullscreenQrcode, addressDataItem.address, strnlen_s(addressDataItem.address, ADDRESS_MAX_LEN));
+            lv_qrcode_update(fullscreenQrcode, addressDataItem->address, strnlen_s(addressDataItem->address, ADDRESS_MAX_LEN));
         }
     } else {
         printf("ERROR: Address is empty for chain %d!\n", g_chainCard);
@@ -761,31 +880,92 @@ static void RefreshQrCode(void)
 #ifdef CYPHERPUNK_VERSION
     if (g_chainCard == HOME_WALLET_CARD_ZEC) {
         char addressString[256];
-        CutAndFormatString(addressString, sizeof(addressString), addressDataItem.address, 56);
+        CutAndFormatString(addressString, sizeof(addressString), addressDataItem->address, 56);
         lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressString);
     }
 #endif
 
 #ifdef WEB3_VERSION
     if (g_chainCard == HOME_WALLET_CARD_ARWEAVE) {
-        SimpleResponse_c_char *fixedAddress = fix_arweave_address(addressDataItem.address);
+        SimpleResponse_c_char *fixedAddress = fix_arweave_address(addressDataItem->address);
         if (fixedAddress->error_code == 0) {
             lv_label_set_text(g_standardReceiveWidgets.addressLabel, fixedAddress->data);
         }
         free_simple_response_c_char(fixedAddress);
     } else if (g_chainCard == HOME_WALLET_CARD_XLM) {
         char addressString[128];
-        CutAndFormatString(addressString, sizeof(addressString), addressDataItem.address, 40);
+        CutAndFormatString(addressString, sizeof(addressString), addressDataItem->address, 40);
         lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressString);
     } else if (g_chainCard == HOME_WALLET_CARD_TON) {
         char address[128];
-        snprintf_s(address, 128, "%.22s\n%s", addressDataItem.address, &addressDataItem.address[22]);
+        snprintf_s(address, 128, "%.22s\n%s", addressDataItem->address, &addressDataItem->address[22]);
         lv_label_set_text(g_standardReceiveWidgets.addressLabel, address);
     } else {
-        lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressDataItem.address);
+        lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressDataItem->address);
     }
 #endif
-    lv_label_set_text_fmt(g_standardReceiveWidgets.addressCountLabel, "%s-%u", _("account_head"), addressDataItem.index);
+    lv_label_set_text_fmt(g_standardReceiveWidgets.addressCountLabel, "%s-%u", _("account_head"), addressDataItem->index);
+}
+
+static void RefreshQrCode(void)
+{
+    AddressDataItem_t addressDataItem;
+    memset(&addressDataItem, 0, sizeof(addressDataItem));
+
+#ifdef WEB3_VERSION
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+        uint32_t index = GetCurrentSelectIndex();
+        // Cache hit: the address is public, so show it immediately without prompting for the PIN.
+        if (QuantusAddrCacheGet(index, addressDataItem.address, sizeof(addressDataItem.address))) {
+            addressDataItem.index = index;
+            RenderReceiveAddress(&addressDataItem);
+            return;
+        }
+        // Cache miss: deriving needs the seed, so prompt for the PIN unless it is already available.
+        char *password = SecretCacheGetPassword();
+        if (password == NULL || password[0] == '\0') {
+            g_keyboardWidget = GuiCreateKeyboardWidget(g_standardReceiveWidgets.cont);
+            SetKeyboardWidgetSelf(g_keyboardWidget, &g_keyboardWidget);
+            static uint16_t sig = SIG_QUANTUS_VERIFY_PASSWORD;
+            SetKeyboardWidgetSig(g_keyboardWidget, &sig);
+            return;
+        }
+        // ML-DSA derivation is slow (~10s on device); show an animated spinner and derive off the
+        // UI thread so it keeps animating. The result arrives via SIG_QUANTUS_ADDRESS_READY.
+        GuiPendingHintBoxOpen(_("quantus_address_generating"), NULL);
+        g_quantusAsyncIndex = index;
+        AsyncExecute(QuantusAddressBgFunc, &index, sizeof(index));
+        return;
+    }
+#endif
+
+    ModelGetAddress(GetCurrentSelectIndex(), &addressDataItem);
+    RenderReceiveAddress(&addressDataItem);
+}
+
+void GuiStandardReceiveQuantusAddressReady(void)
+{
+#ifdef WEB3_VERSION
+    GuiPendingHintBoxRemove();
+    if (g_quantusAsyncOk) {
+        QuantusAddrCachePut(g_quantusAsyncIndex, g_quantusAsyncAddr);
+    } else {
+        printf("ERROR: Quantus async address derivation failed for index %u\n", g_quantusAsyncIndex);
+    }
+    // Derivation is done (or failed); the PIN is no longer needed, so wipe it from memory.
+    if (g_quantusClearPinAfterDerive) {
+        ClearSecretCache();
+        g_quantusClearPinAfterDerive = false;
+    }
+    if (g_quantusAsyncOk && g_StandardReceiveTileNow == RECEIVE_TILE_QRCODE &&
+            GetCurrentSelectIndex() == g_quantusAsyncIndex) {
+        AddressDataItem_t addressDataItem;
+        memset(&addressDataItem, 0, sizeof(addressDataItem));
+        addressDataItem.index = g_quantusAsyncIndex;
+        strcpy_s(addressDataItem.address, ADDRESS_MAX_LEN, g_quantusAsyncAddr);
+        RenderReceiveAddress(&addressDataItem);
+    }
+#endif
 }
 
 static void RefreshSwitchAccount(void)
@@ -975,43 +1155,19 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         result = tron_get_address(hdPath, xPub);
         break;
     case HOME_WALLET_CARD_QUANTUS: {
-        char *password = SecretCacheGetPassword();
-        uint8_t entropy[ENTROPY_MAX_LEN];
-        uint8_t entropyLen = 0;
-        char *mnemonic = NULL;
-        int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
-        printf("GetAccountEntropy: ret=%d, entropyLen=%u\n", ret, entropyLen);
-        if (ret == SUCCESS_CODE && entropyLen > 0) {
-            if (entropyLen != 16 && entropyLen != 20 && entropyLen != 24 && entropyLen != 28 && entropyLen != 32) {
-                printf("Invalid entropy length: %u (must be 16, 20, 24, 28, or 32)\n", entropyLen);
-                memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-            } else {
-                ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
-                memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-                if (ret == SUCCESS_CODE && mnemonic != NULL) {
-                    snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0'/0'", index);
-                    char *passphrase = GetPassphrase(GetCurrentAccountIndex());
-                    printf("quantus_get_address: path='%s', mnemonic_len=%zu\n", hdPath, strnlen_s(mnemonic, 512));
-                    QuantusAddrJobCtx addrCtx = {
-                        .mnemonic = mnemonic, .passphrase = passphrase, .path = hdPath, .result = NULL,
-                    };
-                    QuantusRunCrypto(QuantusAddrJob, &addrCtx);
-                    result = addrCtx.result;
-                    SRAM_FREE(mnemonic);
-                }
-            }
+        char addr[ADDRESS_MAX_LEN];
+        if (QuantusAddrCacheGet(index, addr, sizeof(addr))) {
+            item->index = index;
+            strcpy_s(item->address, ADDRESS_MAX_LEN, addr);
+            snprintf_s(item->path, sizeof(item->path), "m/44'/189189'/%u'/0'/0'", index);
+            return;
         }
-        if (result == NULL) {
-            printf("quantus_get_address failed: GetAccountEntropy ret=%d, entropyLen=%u\n", ret, entropyLen);
-            result = (SimpleResponse_c_char *)SRAM_MALLOC(sizeof(SimpleResponse_c_char));
-            if (result != NULL) {
-                result->data = NULL;
-                result->error_code = 1;
-                result->error_message = NULL;
-            }
+        if (DeriveQuantusAddress(index, addr, sizeof(addr), item->path, sizeof(item->path))) {
+            item->index = index;
+            strcpy_s(item->address, ADDRESS_MAX_LEN, addr);
+            QuantusAddrCachePut(index, addr);
         }
-        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-        break;
+        return;
     }
     case HOME_WALLET_CARD_SUI:
         xPub = GetCurrentAccountPublicKey(XPUB_TYPE_SUI_0 + index);
@@ -1297,6 +1453,13 @@ void GuiStandardReceivePasswordSuccess(void)
     if (g_keyboardWidget != NULL) {
         GuiDeleteKeyboardWidget(g_keyboardWidget);
         g_keyboardWidget = NULL;
+    }
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+        // Quantus derives off the UI thread and still needs the PIN; the completion handler wipes
+        // it once derivation finishes (see GuiStandardReceiveQuantusAddressReady).
+        g_quantusClearPinAfterDerive = true;
+        GuiStandardReceiveRefresh();
+        return;
     }
     GuiStandardReceiveRefresh();
     // Clear password cache after displaying address for security

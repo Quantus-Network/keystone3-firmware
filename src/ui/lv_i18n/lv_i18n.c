@@ -755,6 +755,8 @@ const static lv_i18n_phrase_t en_singulars[] = {
     {"sign_message_invalid_characters_title", "Invalid Message"},
     {"sign_transaction", "Transaction Signing"},
     {"sign_transaction_desc", "Please Wait..."},
+    {"quantus_signing_time_notice", "This may take up to 40 seconds"},
+    {"quantus_address_generating", "Generating address (up to 15s)"},
     {"single_backup_choose_backup_desc", "Select the preferred method for backing up your seed phrase."},
     {"single_backup_choose_backup_title", "Backup Options"},
     {"single_backup_learn_more_desc", "The Shamir Backup method provides a highly secure way to recover a seed phrase. It involves splitting the seed phrase into multiple fragments and specifying the required number of fragments needed to restore the phrase."},

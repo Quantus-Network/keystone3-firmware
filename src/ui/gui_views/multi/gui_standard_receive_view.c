@@ -43,6 +43,9 @@ int32_t GuiStandardReceiveViewEventProcess(void *self, uint16_t usEvent, void *p
     case SIG_SETUP_RSA_PRIVATE_KEY_HIDE_LOADING:
         GuiPendingHintBoxRemove();
         break;
+    case SIG_QUANTUS_ADDRESS_READY:
+        GuiStandardReceiveQuantusAddressReady();
+        break;
     case SIG_VERIFY_PASSWORD_PASS: {
         uint16_t *sig = (uint16_t *)param;
         if (sig != NULL && *sig == SIG_QUANTUS_VERIFY_PASSWORD) {

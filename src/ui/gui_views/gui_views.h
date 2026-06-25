@@ -178,6 +178,8 @@ typedef enum {
 
     SIG_HARDWARE_CALL_DERIVE_PUBKEY,
 
+    SIG_QUANTUS_ADDRESS_READY,
+
 } GUI_VIEW_SIG_ENUM;
 
 extern GUI_VIEW g_initView;

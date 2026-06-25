@@ -12,6 +12,7 @@
 #   forgebox.bin      (only with --sign) signed with YOUR key -> load on ForgeBox
 #
 # Override the signing key with: FORGEBOX_KEY=/path/to/private.pem ./build_release.sh --sign
+
 set -euo pipefail
 cd "$(dirname "$0")"
 
