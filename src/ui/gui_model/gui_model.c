@@ -188,6 +188,47 @@ static void EnqueueAsync(AsyncQueueNode_t *node)
     EnsureAsyncDrainTimer();
 }
 
+// Test-only: when armed, the next enqueued async job is held for this many ms before running.
+// Crypto on the device runs on a separate task while the UI task animates; the simulator runs
+// "background" jobs on the main loop, so we defer (rather than sleep) to keep spinners animating.
+static uint32_t g_simNextAsyncDelayMs = 0;
+
+void GuiModelSimDelayNextAsync(uint32_t ms)
+{
+    g_simNextAsyncDelayMs = ms;
+}
+
+uint32_t GuiModelSimDelayFromEnv(const char *envName, uint32_t defaultMs)
+{
+    const char *value = envName != NULL ? getenv(envName) : NULL;
+    if (value != NULL && value[0] != '\0') {
+        long ms = strtol(value, NULL, 10);
+        if (ms >= 0) {
+            return (uint32_t)ms;
+        }
+    }
+    return defaultMs;
+}
+
+static void DelayedEnqueueCb(lv_timer_t *timer)
+{
+    AsyncQueueNode_t *node = (AsyncQueueNode_t *)timer->user_data;
+    lv_timer_del(timer);
+    EnqueueAsync(node);
+}
+
+// Consumes an armed sim delay. Returns true (and schedules a deferred enqueue) when delaying.
+static bool MaybeDeferAsync(AsyncQueueNode_t *node)
+{
+    uint32_t delay = g_simNextAsyncDelayMs;
+    g_simNextAsyncDelayMs = 0;
+    if (delay == 0) {
+        return false;
+    }
+    lv_timer_create(DelayedEnqueueCb, delay, node);
+    return true;
+}
+
 int32_t AsyncExecute(BackgroundAsyncFunc_t func, const void *inData, uint32_t inDataLen)
 {
     AsyncQueueNode_t *node = malloc(sizeof(*node) + inDataLen);
@@ -201,7 +242,9 @@ int32_t AsyncExecute(BackgroundAsyncFunc_t func, const void *inData, uint32_t in
     if (inData != NULL && inDataLen > 0) {
         memcpy(node->data, inData, inDataLen);
     }
-    EnqueueAsync(node);
+    if (!MaybeDeferAsync(node)) {
+        EnqueueAsync(node);
+    }
     return SUCCESS_CODE;
 }
 
@@ -218,7 +261,9 @@ int32_t AsyncExecuteRunnable(BackgroundAsyncFuncWithRunnable_t func, const void 
     if (inData != NULL && inDataLen > 0) {
         memcpy(node->data, inData, inDataLen);
     }
-    EnqueueAsync(node);
+    if (!MaybeDeferAsync(node)) {
+        EnqueueAsync(node);
+    }
     return SUCCESS_CODE;
 }
 #endif

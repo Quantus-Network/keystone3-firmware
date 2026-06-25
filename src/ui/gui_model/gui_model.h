@@ -100,6 +100,13 @@ uint32_t BinarySearchLastNonFFSector(void);
 void GuiModelParseTransactionRawData(void);
 void GuiModelTransactionParseRawDataDelay(void);
 
+#ifdef COMPILE_SIMULATOR
+// Test-only: arm the next AsyncExecute/AsyncExecuteRunnable to wait `ms` before running, yielding
+// to the UI loop so spinners animate (simulates the device's slow off-UI crypto). One-shot.
+void GuiModelSimDelayNextAsync(uint32_t ms);
+// Reads `envName` (ms) when set, otherwise returns `defaultMs`.
+uint32_t GuiModelSimDelayFromEnv(const char *envName, uint32_t defaultMs);
+#endif
 
 #endif /* _GUI_MODEL_H */
 

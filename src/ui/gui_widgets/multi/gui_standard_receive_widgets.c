@@ -934,6 +934,9 @@ static void RefreshQrCode(void)
         // UI thread so it keeps animating. The result arrives via SIG_QUANTUS_ADDRESS_READY.
         GuiPendingHintBoxOpen(_("quantus_address_generating"), NULL);
         g_quantusAsyncIndex = index;
+#ifdef COMPILE_SIMULATOR
+        GuiModelSimDelayNextAsync(GuiModelSimDelayFromEnv("QUANTUS_SIM_ADDR_DELAY_MS", 0));
+#endif
         AsyncExecute(QuantusAddressBgFunc, &index, sizeof(index));
         return;
     }
