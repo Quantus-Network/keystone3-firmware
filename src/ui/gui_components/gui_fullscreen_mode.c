@@ -24,7 +24,9 @@ void GuiFullscreenContainerGenerate(uint16_t width, uint16_t height, lv_color_t 
 
 void GuiFullscreenModeInit(uint16_t width, uint16_t height, lv_color_t bg_color)
 {
-    g_original_lock_screen = IsPreviousLockScreenEnable();
+    // Restore the page lock state (not the global one) on exit, so a screen that disabled auto-lock
+    // (e.g. the signed-tx QR) stays awake after the user enlarges and shrinks the QR again.
+    g_original_lock_screen = IsPageLockScreenEnable();
     GuiFullscreenContainerGenerate(width, height, bg_color);
 }
 

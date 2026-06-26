@@ -74,6 +74,11 @@ bool IsPreviousLockScreenEnable(void)
     return g_lockScreenEnable;
 }
 
+bool IsPageLockScreenEnable(void)
+{
+    return g_pageLockScreenEnable;
+}
+
 void ClearLockScreenTime(void)
 {
     g_lockScreenTick = 0;

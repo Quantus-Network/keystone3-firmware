@@ -352,6 +352,11 @@ int32_t GetSerialNumber(char *serialNumber)
     return 0;
 }
 
+bool IsPageLockScreenEnable(void)
+{
+    return true;
+}
+
 bool IsPreviousLockScreenEnable(void)
 {
     return true;

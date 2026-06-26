@@ -10,6 +10,7 @@ void SetLockScreen(bool enable);
 void SetPageLockScreen(bool enable);
 void SetLockTimeState(bool enable);
 bool IsPreviousLockScreenEnable(void);
+bool IsPageLockScreenEnable(void);
 void ClearLockScreenTime(void);
 void SetLockTimeOut(uint32_t timeOut);
 void SetLockDeviceAlive(bool alive);

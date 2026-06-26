@@ -39,6 +39,7 @@ void FpWipeManageInfo(void);
 void SetPageLockScreen(bool enable);
 uint8_t GetFingerSignFlag(void);
 bool IsPreviousLockScreenEnable(void);
+bool IsPageLockScreenEnable(void);
 void SetLockScreen(bool enable);
 void OTP_PowerOn(void);
 void random_buffer(uint8_t *buf, size_t len);

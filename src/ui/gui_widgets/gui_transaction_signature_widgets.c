@@ -35,6 +35,9 @@ static PageWidget_t *g_pageWidget;
 
 void GuiTransactionSignatureInit(uint8_t viewType)
 {
+    // Keep the device awake: scanning the signed-tx QR with a wallet can take a while with no
+    // on-device interaction, so the auto-lock must not kick in and blank the screen.
+    SetPageLockScreen(false);
     g_viewType = viewType;
     g_chainType = ViewTypeToChainTypeSwitch(g_viewType);
     g_pageWidget = CreatePageWidget();
@@ -44,6 +47,7 @@ void GuiTransactionSignatureInit(uint8_t viewType)
 
 void GuiTransactionSignatureDeInit(void)
 {
+    SetPageLockScreen(true);
     GuiAnimatingQRCodeDestroyTimer();
     if (g_pageWidget != NULL) {
         DestroyPageWidget(g_pageWidget);
