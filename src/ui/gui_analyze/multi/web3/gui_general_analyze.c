@@ -117,6 +117,8 @@ GetCustomContainerFunc GetOtherChainCustomFunc(char *funcName)
         return GuiCustomPathNotice;
     } else if (!strcmp(funcName, "GuiZcashOverview")) {
         return GuiZcashOverview;
+    } else if (!strcmp(funcName, "GuiQuantusMultisigDetails")) {
+        return GuiQuantusMultisigDetails;
     }
 
     return NULL;
@@ -213,6 +215,10 @@ GetObjStateFunc GuiOtherChainStateFuncGet(char *type)
         return GetSolMessageFromExist;
     } else if (!strcmp(type, "GetSolMessageFromNotExist")) {
         return GetSolMessageFromNotExist;
+    } else if (!strcmp(type, "GetQuantusIsTransfer")) {
+        return GetQuantusIsTransfer;
+    } else if (!strcmp(type, "GetQuantusIsMultisig")) {
+        return GetQuantusIsMultisig;
     }
     return NULL;
 }

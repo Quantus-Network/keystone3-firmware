@@ -5,6 +5,7 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
+use crate::parser::QuantusTx;
 use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
 use qp_poseidon_core::hash_bytes;
 #[cfg(not(test))]
@@ -98,35 +99,114 @@ fn format_duration(ms: u64) -> String {
     String::from(result.trim())
 }
 
+fn tx_type_title(tx: &QuantusTx) -> &'static str {
+    match tx {
+        QuantusTx::Transfer { is_reversible: true, .. } => "Reversible Transfer",
+        QuantusTx::Transfer { .. } => "Transfer",
+        QuantusTx::MultisigCreate { .. } => "Create Multisig",
+        QuantusTx::MultisigPropose { .. } => "Multisig Propose",
+        QuantusTx::MultisigApprove { .. } => "Multisig Approve",
+        QuantusTx::MultisigExecute { .. } => "Multisig Execute",
+    }
+}
+
+fn push_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, value: String) {
+    labels.push(label.to_string());
+    values.push(value);
+}
+
+// Flatten a call into ordered (label, value) rows for the per-type detail view. Recurses into the
+// inner call of a multisig proposal so the user sees exactly what is being proposed (no blind signing).
+fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String>) {
+    match tx {
+        QuantusTx::Transfer { to, amount, is_reversible, reversible_timeframe } => {
+            push_row(labels, values, "Amount", alloc::format!("{} QUAN", format_amount(*amount)));
+            push_row(labels, values, "To", to.clone());
+            if *is_reversible {
+                push_row(labels, values, "Reversible", "Yes".to_string());
+                if let Some(ms) = reversible_timeframe {
+                    push_row(labels, values, "Reversal Window", format_duration(*ms));
+                }
+            }
+        }
+        QuantusTx::MultisigCreate { signers, threshold, nonce } => {
+            push_row(labels, values, "Threshold", alloc::format!("{} of {}", threshold, signers.len()));
+            push_row(labels, values, "Nonce", nonce.to_string());
+            for (i, signer) in signers.iter().enumerate() {
+                push_row(labels, values, &alloc::format!("Signer {}", i + 1), signer.clone());
+            }
+        }
+        QuantusTx::MultisigPropose { multisig, expiry, inner } => {
+            push_row(labels, values, "Multisig", multisig.clone());
+            push_row(labels, values, "Expiry Block", expiry.to_string());
+            push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
+            append_rows(inner, labels, values);
+        }
+        QuantusTx::MultisigApprove { multisig, proposal_id } => {
+            push_row(labels, values, "Multisig", multisig.clone());
+            push_row(labels, values, "Proposal ID", proposal_id.to_string());
+        }
+        QuantusTx::MultisigExecute { multisig, proposal_id } => {
+            push_row(labels, values, "Multisig", multisig.clone());
+            push_row(labels, values, "Proposal ID", proposal_id.to_string());
+        }
+    }
+}
+
+fn build_parsed_tx(tx: &QuantusTx) -> ParsedQuantusTx {
+    let tx_type = tx_type_title(tx).to_string();
+
+    // Plain transfers keep the existing curated card layout (to/amount/fee/nonce fields).
+    if let QuantusTx::Transfer { to, amount, is_reversible, reversible_timeframe } = tx {
+        let timeframe_str = match reversible_timeframe {
+            Some(ms) => format_duration(*ms),
+            None => String::new(),
+        };
+        return ParsedQuantusTx::new(
+            tx_type,
+            false,
+            to.clone(),
+            format_amount(*amount),
+            "0".to_string(),
+            "0".to_string(),
+            *is_reversible,
+            timeframe_str,
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+
+    // Everything else renders as a generic per-type labeled list.
+    let mut labels = Vec::new();
+    let mut values = Vec::new();
+    append_rows(tx, &mut labels, &mut values);
+    ParsedQuantusTx::new(
+        tx_type,
+        true,
+        String::new(),
+        String::new(),
+        String::new(),
+        String::new(),
+        false,
+        String::new(),
+        labels,
+        values,
+    )
+}
+
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     use crate::parser::QuantusPayloadParser;
-    
-    #[cfg(not(test))]
+
     #[cfg(not(test))]
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
-    
-    match QuantusPayloadParser::parse_payload(data) {
-        Ok(info) => {
-            #[cfg(not(test))]
-            #[cfg(not(test))]
-            debug!(alloc::format!("QuantusPayloadParser success: {}", info));
-            let reversible_timeframe_str = if let Some(ms) = info.reversible_timeframe {
-                format_duration(ms)
-            } else {
-                String::new()
-            };
 
-            Ok(ParsedQuantusTx::new(
-                info.to_address,
-                format_amount(info.amount),
-                "0".to_string(), // Nonce not available in new format
-                "0".to_string(), // Fee not available in new format
-                info.is_reversible,
-                reversible_timeframe_str
-            ))
+    match QuantusPayloadParser::parse_payload(data) {
+        Ok(tx) => {
+            #[cfg(not(test))]
+            debug!(alloc::format!("QuantusPayloadParser success: {}", tx));
+            Ok(build_parsed_tx(&tx))
         }
         Err(_e) => {
-            #[cfg(not(test))]
             #[cfg(not(test))]
             debug!(alloc::format!("QuantusPayloadParser failed: {}", _e));
             Err(QuantusError::InvalidTransaction)

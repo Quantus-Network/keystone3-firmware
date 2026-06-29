@@ -1,42 +1,70 @@
-use core::ptr::null_mut;
+use alloc::boxed::Box;
+use alloc::string::String;
+use alloc::vec::Vec;
 use crate::common::{
+    ffi::VecFFI,
     free::Free,
-    types::{PtrString},
+    types::{PtrString, PtrT},
     utils::convert_c_char,
 };
-use crate::{free_str_ptr};
+use crate::free_str_ptr;
 use app_quantus::structs::ParsedQuantusTx;
 
 #[repr(C)]
 pub struct DisplayQuantusTx {
+    pub tx_type: PtrString,
+    pub is_multisig: bool,
     pub to: PtrString,
     pub amount: PtrString,
     pub nonce: PtrString,
     pub fee: PtrString,
     pub is_reversible: bool,
     pub reversible_timeframe: PtrString,
+    pub detail_labels: PtrT<VecFFI<PtrString>>,
+    pub detail_values: PtrT<VecFFI<PtrString>>,
+}
+
+fn string_vec_to_ffi(items: Vec<String>) -> PtrT<VecFFI<PtrString>> {
+    VecFFI::from(items.into_iter().map(convert_c_char).collect::<Vec<PtrString>>()).c_ptr()
+}
+
+unsafe fn free_string_vec_ffi(ptr: PtrT<VecFFI<PtrString>>) {
+    if ptr.is_null() {
+        return;
+    }
+    let x = Box::from_raw(ptr);
+    let ve = Vec::from_raw_parts(x.data, x.size, x.cap);
+    ve.iter().for_each(|v| {
+        free_str_ptr!(*v);
+    });
 }
 
 impl From<&ParsedQuantusTx> for DisplayQuantusTx {
     fn from(tx: &ParsedQuantusTx) -> Self {
         Self {
+            tx_type: convert_c_char(tx.get_tx_type()),
+            is_multisig: tx.get_is_multisig(),
             to: convert_c_char(tx.get_to()),
             amount: convert_c_char(tx.get_amount()),
             nonce: convert_c_char(tx.get_nonce()),
             fee: convert_c_char(tx.get_fee()),
             is_reversible: tx.get_is_reversible(),
             reversible_timeframe: convert_c_char(tx.get_reversible_timeframe()),
+            detail_labels: string_vec_to_ffi(tx.get_detail_labels()),
+            detail_values: string_vec_to_ffi(tx.get_detail_values()),
         }
     }
 }
 
 impl Free for DisplayQuantusTx {
     unsafe fn free(&self) {
+        free_str_ptr!(self.tx_type);
         free_str_ptr!(self.to);
         free_str_ptr!(self.amount);
         free_str_ptr!(self.nonce);
         free_str_ptr!(self.fee);
         free_str_ptr!(self.reversible_timeframe);
+        free_string_vec_ffi(self.detail_labels);
+        free_string_vec_ffi(self.detail_values);
     }
 }
-

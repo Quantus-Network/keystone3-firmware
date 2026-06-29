@@ -11,6 +11,9 @@ void GetQuantusValue(void *indata, void *param, uint32_t maxLen);
 void (*GuiQuantusTextFuncGet(char *type))(void *indata, void *param, uint32_t maxLen);
 UREncodeResult *GuiGetQuantusSignQrCodeData(void);
 void GuiQuantusOverview(lv_obj_t *parent, void *totalData);
+bool GetQuantusIsTransfer(void *indata, void *param);
+bool GetQuantusIsMultisig(void *indata, void *param);
+void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData);
 void FreeQuantusMemory(void);
 
 // Run `fn(ctx)` on a dedicated, PSRAM-backed stack large enough for ML-DSA-87 keygen/signing,

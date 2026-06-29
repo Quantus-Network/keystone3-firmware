@@ -177,6 +177,44 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
     return NULL;
 }
 
+// Plain transfers keep the curated card template; every other call type (multisig) renders through
+// GuiQuantusMultisigDetails instead. These gate the two layouts via the template "exist_func".
+bool GetQuantusIsTransfer(void *indata, void *param)
+{
+    DisplayQuantusTx *tx = (DisplayQuantusTx *)param;
+    return tx != NULL && !tx->is_multisig;
+}
+
+bool GetQuantusIsMultisig(void *indata, void *param)
+{
+    DisplayQuantusTx *tx = (DisplayQuantusTx *)param;
+    return tx != NULL && tx->is_multisig;
+}
+
+// Generic per-type view: a "Type" title followed by the ordered (label, value) rows the parser
+// produced. Used for multisig create/propose/approve/execute (display only, never blind-signed).
+void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
+{
+    DisplayQuantusTx *tx = (DisplayQuantusTx *)totalData;
+    lv_obj_set_size(parent, 408, 514);
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *lastView = NULL;
+    if (tx->tx_type != NULL) {
+        lastView = CreateTransactionItemView(parent, "Type", tx->tx_type, lastView);
+    }
+
+    PtrT_VecFFI_PtrString labels = tx->detail_labels;
+    PtrT_VecFFI_PtrString values = tx->detail_values;
+    if (labels != NULL && values != NULL) {
+        uint32_t count = labels->size < values->size ? labels->size : values->size;
+        for (uint32_t i = 0; i < count; i++) {
+            lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
+        }
+    }
+}
+
 #ifndef COMPILE_SIMULATOR
 // ~192 KB PSRAM-backed stack: ML-DSA-87 signing needs ~110 KB, keygen ~50 KB, plus FFI/UR
 // framing margin. Sized off the thumbv7em stack-frame measurement (see qp-rusty-crystals
