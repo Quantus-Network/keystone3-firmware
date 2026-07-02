@@ -28,5 +28,11 @@ ur-registry = { workspace = true }
 ur-parse-lib = { workspace = true }
 minicbor = { workspace = true }
 
+[features]
+# Opt-in ONLY for local debugging: logs derived secrets (mnemonic/passphrase) via
+# rust_tools::debug. OFF by default so secrets are never printed on device or simulator
+# builds. Never enable in a release/production build.
+debug_secrets = []
+
 [dev-dependencies]
 keystore = { path = "../../keystore" }
