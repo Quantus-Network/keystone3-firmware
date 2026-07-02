@@ -304,6 +304,46 @@ static void QuantusSignJob(void *p)
     c->result = quantus_sign_tx(c->data, c->mnemonic, c->passphrase, c->path, c->mfp, c->mfpLen);
 }
 
+char *QuantusReconstructMnemonic(void)
+{
+    if (GetMnemonicType() != MNEMONIC_TYPE_BIP39) {
+        printf("Quantus: only BIP39 mnemonics are supported\r\n");
+        return NULL;
+    }
+    char *password = SecretCacheGetPassword();
+    uint8_t entropy[ENTROPY_MAX_LEN];
+    uint8_t entropyLen = 0;
+    char *mnemonic = NULL;
+    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+    if (ret != SUCCESS_CODE || entropyLen == 0) {
+        printf("Quantus: GetAccountEntropy failed ret=%d entropyLen=%u\r\n", ret, entropyLen);
+        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        return NULL;
+    }
+    if (entropyLen != 16 && entropyLen != 20 && entropyLen != 24 && entropyLen != 28 && entropyLen != 32) {
+        printf("Quantus: invalid entropy length %u\r\n", entropyLen);
+        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+        return NULL;
+    }
+    ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
+    memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
+    if (ret != SUCCESS_CODE || mnemonic == NULL) {
+        printf("Quantus: bip39_mnemonic_from_bytes failed ret=%d\r\n", ret);
+        return NULL;
+    }
+    return mnemonic;
+}
+
+void QuantusWipeAndFreeMnemonic(char *mnemonic)
+{
+    if (mnemonic == NULL) {
+        return;
+    }
+    size_t len = strlen(mnemonic);
+    memset_s(mnemonic, len, 0, len);
+    SRAM_FREE(mnemonic);
+}
+
 UREncodeResult *GuiGetQuantusSignQrCodeData(void)
 {
     bool enable = IsPreviousLockScreenEnable();
@@ -312,41 +352,25 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
     do {
-        char *mnemonic = NULL;
-        char *password = SecretCacheGetPassword();
         char *passphrase = GetPassphrase(GetCurrentAccountIndex());
         char path[] = "m/44'/189189'/0'/0'/0'";
 
-        if (GetMnemonicType() == MNEMONIC_TYPE_BIP39) {
-            uint8_t entropy[ENTROPY_MAX_LEN];
-            uint8_t entropyLen = 0;
-            int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
-            if (ret != SUCCESS_CODE || entropyLen == 0) {
-                printf("Quantus: GetAccountEntropy failed or empty\r\n");
-                break;
-            }
-            
-            bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
-            memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-        } else {
-             // Handle other mnemonic types if necessary or error out
-             printf("Quantus: Only BIP39 supported for now\r\n");
-             break;
+        char *mnemonic = QuantusReconstructMnemonic();
+        if (mnemonic == NULL) {
+            break;
         }
-        
+
         uint8_t mfp[4];
         GetMasterFingerPrint(mfp);
-        
-        if (mnemonic) {
-            QuantusSignJobCtx ctx = {
-                .data = data, .mnemonic = mnemonic, .passphrase = passphrase,
-                .path = path, .mfp = mfp, .mfpLen = sizeof(mfp), .result = NULL,
-            };
-            QuantusRunCrypto(QuantusSignJob, &ctx);
-            encodeResult = ctx.result;
-            memset_s(mnemonic, strlen(mnemonic), 0, strlen(mnemonic));
-            SRAM_FREE(mnemonic);
-        }
+
+        QuantusSignJobCtx ctx = {
+            .data = data, .mnemonic = mnemonic, .passphrase = passphrase,
+            .path = path, .mfp = mfp, .mfpLen = sizeof(mfp), .result = NULL,
+        };
+        QuantusRunCrypto(QuantusSignJob, &ctx);
+        encodeResult = ctx.result;
+        // Zeroize the mnemonic the moment signing is done.
+        QuantusWipeAndFreeMnemonic(mnemonic);
         
         if (encodeResult && encodeResult->error_code == 0) {
             if (encodeResult->is_multi_part) {
