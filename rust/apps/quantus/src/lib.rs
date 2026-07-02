@@ -36,11 +36,11 @@ pub mod ss58;
 
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 
-    #[cfg(not(test))]
+    #[cfg(all(not(test), feature = "debug_secrets"))]
     rust_tools::debug!(alloc::format!("get_keys mnemonic: {}", mnemonic));
-    #[cfg(not(test))]
+    #[cfg(all(not(test), feature = "debug_secrets"))]
     rust_tools::debug!(alloc::format!("get_keys passphrase: {}", passphrase));
-    #[cfg(not(test))]
+    #[cfg(all(not(test), feature = "debug_secrets"))]
     rust_tools::debug!(alloc::format!("get_keys path: {}", path));
 
     qp_rusty_crystals_hdwallet::derive_key_from_mnemonic(mnemonic, Some(passphrase), path)
@@ -49,7 +49,7 @@ fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
 
-    #[cfg(not(test))]
+    #[cfg(all(not(test), feature = "debug_secrets"))]
     debug!(alloc::format!("get_address mnemonic: {}, passphrase: {}, path: {}", mnemonic, passphrase, path));
 
     let keys = get_keys(mnemonic, passphrase, path)?;
