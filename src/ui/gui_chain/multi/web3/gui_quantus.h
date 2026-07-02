@@ -22,4 +22,11 @@ void FreeQuantusMemory(void);
 typedef void (*QuantusCryptoFunc_t)(void *ctx);
 void QuantusRunCrypto(QuantusCryptoFunc_t fn, void *ctx);
 
+// Reconstruct the current account's BIP39 mnemonic from stored entropy (SRAM-allocated). Returns
+// NULL on any failure (fail loud, no fallback). The caller MUST hand the result to
+// QuantusWipeAndFreeMnemonic as soon as it is done, so the secret is zeroized the moment it is no
+// longer needed. Shared by the signing and address-derivation paths.
+char *QuantusReconstructMnemonic(void);
+void QuantusWipeAndFreeMnemonic(char *mnemonic);
+
 #endif /* _GUI_QUANTUS_H */

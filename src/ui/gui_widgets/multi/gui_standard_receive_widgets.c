@@ -112,30 +112,13 @@ static void QuantusAddrCachePut(uint32_t index, const char *address)
 // stack via QuantusRunCrypto. Fills outAddr (and outPath when non-NULL). Fails loudly, no fallback.
 static bool DeriveQuantusAddress(uint32_t index, char *outAddr, uint32_t addrLen, char *outPath, uint32_t pathLen)
 {
-    char *password = SecretCacheGetPassword();
-    uint8_t entropy[ENTROPY_MAX_LEN];
-    uint8_t entropyLen = 0;
-    char *mnemonic = NULL;
+    char *mnemonic = QuantusReconstructMnemonic();
+    if (mnemonic == NULL) {
+        return false;
+    }
+
     char hdPath[BUFFER_SIZE_128];
     bool ok = false;
-
-    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
-    if (ret != SUCCESS_CODE || entropyLen == 0) {
-        printf("DeriveQuantusAddress: GetAccountEntropy ret=%d entropyLen=%u\n", ret, entropyLen);
-        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-        return false;
-    }
-    if (entropyLen != 16 && entropyLen != 20 && entropyLen != 24 && entropyLen != 28 && entropyLen != 32) {
-        printf("DeriveQuantusAddress: invalid entropy length %u\n", entropyLen);
-        memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-        return false;
-    }
-    ret = bip39_mnemonic_from_bytes(NULL, entropy, entropyLen, &mnemonic);
-    memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
-    if (ret != SUCCESS_CODE || mnemonic == NULL) {
-        printf("DeriveQuantusAddress: bip39_mnemonic_from_bytes ret=%d\n", ret);
-        return false;
-    }
     snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0'/0'", index);
     char *passphrase = GetPassphrase(GetCurrentAccountIndex());
     QuantusAddrJobCtx ctx = { .mnemonic = mnemonic, .passphrase = passphrase, .path = hdPath, .result = NULL };
@@ -153,7 +136,8 @@ static bool DeriveQuantusAddress(uint32_t index, char *outAddr, uint32_t addrLen
     if (result != NULL) {
         free_simple_response_c_char(result);
     }
-    SRAM_FREE(mnemonic);
+    // Zeroize the mnemonic the moment derivation is done.
+    QuantusWipeAndFreeMnemonic(mnemonic);
     return ok;
 }
 
