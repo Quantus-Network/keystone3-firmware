@@ -70,8 +70,10 @@ void *GuiGetQuantusData(void)
         printf("Quantus: Parse successful, displaying transaction:\r\n");
         printf("Quantus:   To: %s\r\n", g_quantusData->to ? g_quantusData->to : "(null)");
         printf("Quantus:   Amount: %s\r\n", g_quantusData->amount ? g_quantusData->amount : "(null)");
-        printf("Quantus:   Fee: %s\r\n", g_quantusData->fee ? g_quantusData->fee : "(null)");
+        printf("Quantus:   Tip: %s\r\n", g_quantusData->tip ? g_quantusData->tip : "(null)");
         printf("Quantus:   Nonce: %s\r\n", g_quantusData->nonce ? g_quantusData->nonce : "(null)");
+        printf("Quantus:   Network: %s\r\n", g_quantusData->network ? g_quantusData->network : "(null)");
+        printf("Quantus:   Era: %s\r\n", g_quantusData->era ? g_quantusData->era : "(null)");
         printf("Quantus:   Reversible: %s\r\n", g_quantusData->is_reversible ? "true" : "false");
         printf("Quantus:   Timeframe: %s\r\n", g_quantusData->reversible_timeframe ? g_quantusData->reversible_timeframe : "(null)");
     } else {
@@ -99,12 +101,12 @@ void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
     }
 }
 
-void GetQuantusFee(void *indata, void *param, uint32_t maxLen)
+void GetQuantusTip(void *indata, void *param, uint32_t maxLen)
 {
-    if (g_quantusData && g_quantusData->fee) {
-         snprintf_s((char *)indata, maxLen, "%s QUAN", g_quantusData->fee);
+    if (g_quantusData && g_quantusData->tip) {
+         snprintf_s((char *)indata, maxLen, "%s QUAN", g_quantusData->tip);
     } else {
-         snprintf_s((char *)indata, maxLen, "0 QUAN");
+         snprintf_s((char *)indata, maxLen, "unknown");
     }
 }
 
@@ -117,10 +119,13 @@ void GetQuantusToAddress(void *indata, void *param, uint32_t maxLen)
     }
 }
 
-void GetQuantusFromAddress(void *indata, void *param, uint32_t maxLen)
+void GetQuantusEra(void *indata, void *param, uint32_t maxLen)
 {
-    // Quantus doesn't have from address in current data structure
-    strcpy_s((char *)indata, maxLen, "Quantus Account");
+    if (g_quantusData && g_quantusData->era) {
+        strcpy_s((char *)indata, maxLen, g_quantusData->era);
+    } else {
+        strcpy_s((char *)indata, maxLen, "unknown");
+    }
 }
 
 void GetQuantusNonce(void *indata, void *param, uint32_t maxLen)
@@ -152,19 +157,23 @@ void GetQuantusIsReversible(void *indata, void *param, uint32_t maxLen)
 
 void GetQuantusNetwork(void *indata, void *param, uint32_t maxLen)
 {
-    strcpy_s((char *)indata, maxLen, "Quantus Network");
+    if (g_quantusData && g_quantusData->network) {
+        strcpy_s((char *)indata, maxLen, g_quantusData->network);
+    } else {
+        strcpy_s((char *)indata, maxLen, "unknown");
+    }
 }
 
 GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
 {
     if (!strcmp(type, "GetQuantusValue")) {
         return GetQuantusValue;
-    } else if (!strcmp(type, "GetQuantusFee")) {
-        return GetQuantusFee;
+    } else if (!strcmp(type, "GetQuantusTip")) {
+        return GetQuantusTip;
     } else if (!strcmp(type, "GetQuantusToAddress")) {
         return GetQuantusToAddress;
-    } else if (!strcmp(type, "GetQuantusFromAddress")) {
-        return GetQuantusFromAddress;
+    } else if (!strcmp(type, "GetQuantusEra")) {
+        return GetQuantusEra;
     } else if (!strcmp(type, "GetQuantusNonce")) {
         return GetQuantusNonce;
     } else if (!strcmp(type, "GetQuantusReversibleTimeframe")) {

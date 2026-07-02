@@ -17,9 +17,11 @@ pub struct DisplayQuantusTx {
     pub to: PtrString,
     pub amount: PtrString,
     pub nonce: PtrString,
-    pub fee: PtrString,
+    pub tip: PtrString,
     pub is_reversible: bool,
     pub reversible_timeframe: PtrString,
+    pub network: PtrString,
+    pub era: PtrString,
     pub detail_labels: PtrT<VecFFI<PtrString>>,
     pub detail_values: PtrT<VecFFI<PtrString>>,
 }
@@ -47,9 +49,11 @@ impl From<&ParsedQuantusTx> for DisplayQuantusTx {
             to: convert_c_char(tx.get_to()),
             amount: convert_c_char(tx.get_amount()),
             nonce: convert_c_char(tx.get_nonce()),
-            fee: convert_c_char(tx.get_fee()),
+            tip: convert_c_char(tx.get_tip()),
             is_reversible: tx.get_is_reversible(),
             reversible_timeframe: convert_c_char(tx.get_reversible_timeframe()),
+            network: convert_c_char(tx.get_network()),
+            era: convert_c_char(tx.get_era()),
             detail_labels: string_vec_to_ffi(tx.get_detail_labels()),
             detail_values: string_vec_to_ffi(tx.get_detail_values()),
         }
@@ -62,8 +66,10 @@ impl Free for DisplayQuantusTx {
         free_str_ptr!(self.to);
         free_str_ptr!(self.amount);
         free_str_ptr!(self.nonce);
-        free_str_ptr!(self.fee);
+        free_str_ptr!(self.tip);
         free_str_ptr!(self.reversible_timeframe);
+        free_str_ptr!(self.network);
+        free_str_ptr!(self.era);
         free_string_vec_ffi(self.detail_labels);
         free_string_vec_ffi(self.detail_values);
     }

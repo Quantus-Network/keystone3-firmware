@@ -153,10 +153,15 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
     }
 }
 
-fn build_parsed_tx(tx: &QuantusTx) -> ParsedQuantusTx {
+fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
+    let tx = &parsed.call;
     let tx_type = tx_type_title(tx).to_string();
+    let nonce = parsed.extensions.nonce.to_string();
+    let tip = format_amount(parsed.extensions.tip);
+    let network = parsed.network.to_string();
+    let era = parsed.extensions.era.to_string();
 
-    // Plain transfers keep the existing curated card layout (to/amount/fee/nonce fields).
+    // Plain transfers keep the existing curated card layout (to/amount/tip/nonce fields).
     if let QuantusTx::Transfer { to, amount, is_reversible, reversible_timeframe } = tx {
         let timeframe_str = match reversible_timeframe {
             Some(ms) => format_duration(*ms),
@@ -167,48 +172,55 @@ fn build_parsed_tx(tx: &QuantusTx) -> ParsedQuantusTx {
             false,
             to.clone(),
             format_amount(*amount),
-            "0".to_string(),
-            "0".to_string(),
+            nonce,
+            tip,
             *is_reversible,
             timeframe_str,
+            network,
+            era,
             Vec::new(),
             Vec::new(),
         );
     }
 
-    // Everything else renders as a generic per-type labeled list.
+    // Everything else renders as a generic per-type labeled list, followed by the signed
+    // extensions so nothing that is signed goes undisplayed.
     let mut labels = Vec::new();
     let mut values = Vec::new();
     append_rows(tx, &mut labels, &mut values);
+    push_row(&mut labels, &mut values, "Network", network.clone());
+    push_row(&mut labels, &mut values, "Signer Nonce", nonce.clone());
+    push_row(&mut labels, &mut values, "Tip", alloc::format!("{} QUAN", tip));
+    push_row(&mut labels, &mut values, "Valid For", era.clone());
     ParsedQuantusTx::new(
         tx_type,
         true,
         String::new(),
         String::new(),
-        String::new(),
-        String::new(),
+        nonce,
+        tip,
         false,
         String::new(),
+        network,
+        era,
         labels,
         values,
     )
 }
 
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
-    use crate::parser::QuantusPayloadParser;
-
     #[cfg(not(test))]
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
 
-    match QuantusPayloadParser::parse_payload(data) {
-        Ok(tx) => {
+    match parser::parse_payload(data) {
+        Ok(parsed) => {
             #[cfg(not(test))]
-            debug!(alloc::format!("QuantusPayloadParser success: {}", tx));
-            Ok(build_parsed_tx(&tx))
+            debug!(alloc::format!("parse_payload success: {}", parsed.call));
+            Ok(build_parsed_tx(&parsed))
         }
         Err(_e) => {
             #[cfg(not(test))]
-            debug!(alloc::format!("QuantusPayloadParser failed: {}", _e));
+            debug!(alloc::format!("parse_payload failed: {}", _e));
             Err(QuantusError::InvalidTransaction)
         }
     }
@@ -257,10 +269,14 @@ pub fn sign_raw_tx(
 }
 
 pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
-    use crate::parser::QuantusPayloadParser;
-    QuantusPayloadParser::parse_payload(&data)
-        .map(|_| ())
-        .map_err(|_| QuantusError::InvalidTransaction)
+    match parser::parse_payload(&data) {
+        Ok(_) => Ok(()),
+        Err(_e) => {
+            #[cfg(not(test))]
+            debug!(alloc::format!("check_raw_tx failed: {}", _e));
+            Err(QuantusError::InvalidTransaction)
+        }
+    }
 }
 
 #[cfg(test)]
