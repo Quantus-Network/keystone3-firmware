@@ -18,3 +18,4 @@ pyenv
 /venv
 /dist_production
 /dist_device
+/.cursor
