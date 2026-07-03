@@ -8,9 +8,11 @@ impl_public_struct!(ParsedQuantusTx {
     to: String,
     amount: String,
     nonce: String,
-    fee: String,
+    tip: String,
     is_reversible: bool,
     reversible_timeframe: String,
+    network: String,
+    era: String,
     detail_labels: Vec<String>,
     detail_values: Vec<String>
 });
