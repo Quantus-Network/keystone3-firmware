@@ -36,3 +36,13 @@ debug_secrets = []
 
 [dev-dependencies]
 keystore = { path = "../../keystore" }
+# Chain-side conformance testing (host-only):
+# - frame-metadata/scale-info decode the checked-in live Planck runtime metadata so the
+#   parser's mirrored call/extension codecs are asserted against what the chain publishes.
+# - qp-dilithium-crypto is the chain's own signature scheme crate; it verifies
+#   device-produced signatures through the exact Verify impl the runtime uses.
+frame-metadata = { version = "23", default-features = false, features = ["current", "decode", "std"] }
+scale-info = { version = "2", default-features = false, features = ["std"] }
+qp-dilithium-crypto = { version = "0.4.0", features = ["std"] }
+sp-core = { version = "39", default-features = false, features = ["std"] }
+sp-runtime = { version = "45", default-features = false, features = ["std"] }

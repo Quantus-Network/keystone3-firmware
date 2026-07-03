@@ -13,7 +13,7 @@ const MAX_CALL_DEPTH: u32 = 2;
 
 /// Networks this firmware will sign for: (genesis hash, display name).
 /// A payload whose `CheckGenesis` hash is not listed here is rejected.
-const KNOWN_NETWORKS: &[([u8; 32], &str)] = &[
+pub const KNOWN_NETWORKS: &[([u8; 32], &str)] = &[
     (
         // Planck: 0x4901bf5c57fd3f9e726af399c763de6670dbdb115a91c0237e173f16eef65e72
         [
