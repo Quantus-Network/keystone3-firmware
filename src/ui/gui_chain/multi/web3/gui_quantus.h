@@ -4,6 +4,11 @@
 #include "rust.h"
 #include "lvgl.h"
 
+// Single source of truth for the Quantus HD path template (coin type 189189, %u = account
+// index). Receive and signing must derive from the same template so they can never diverge;
+// signing uses index 0, matching the only index the receive UI exposes (audit M-2).
+#define QUANTUS_HD_PATH_FMT "m/44'/189189'/%u'/0'/0'"
+
 void GuiSetQuantusUrData(URParseResult *urResult, URParseMultiResult *urMultiResult, bool multi);
 void *GuiGetQuantusData(void);
 PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void);

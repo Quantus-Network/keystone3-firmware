@@ -226,13 +226,16 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
     }
 }
 
+/// `hedge` is fresh device randomness for FIPS 204 hedged signing: it is folded into the
+/// signature's internal nonce so a fault-injection attack on a stolen device cannot use the
+/// deterministic two-signature trick to recover key material (audit M-1).
 pub fn sign_raw_tx(
     payload_to_sign: Vec<u8>,
     path: &str,
     mnemonic: &str,
     passphrase: &str,
+    hedge: [u8; 32],
 ) -> Result<Vec<u8>> {
-    #[cfg(not(test))]
     #[cfg(not(test))]
     debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
 
@@ -242,7 +245,6 @@ pub fn sign_raw_tx(
     // 2. Handle payload > 256 bytes
     let msg_to_sign = if payload_to_sign.len() > 256 {
         #[cfg(not(test))]
-        #[cfg(not(test))]
         debug!("Payload > 256 bytes, hashing with Blake2b-256".to_string());
         blake2b_256(&payload_to_sign).to_vec()
     } else {
@@ -250,8 +252,7 @@ pub fn sign_raw_tx(
     };
 
     // 3. Sign
-    // Dilithium sign signature: fn sign(&self, msg: &[u8], ctx: Option<&[u8]>, rnd: Option<[u8; 32]>) -> Result<[u8; SIG_BYTES], SignatureError>
-    let signature = keys.secret.sign(&msg_to_sign, None, None)
+    let signature = keys.secret.sign(&msg_to_sign, None, Some(hedge))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
     #[cfg(not(test))]
@@ -260,11 +261,10 @@ pub fn sign_raw_tx(
     // 4. Concatenate Signature + Public Key
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
-    
-    #[cfg(not(test))]
+
     #[cfg(not(test))]
     debug!(alloc::format!("signature_with_pubkey len: {}", signature_with_pubkey.len()));
-    
+
     Ok(signature_with_pubkey)
 }
 
@@ -284,6 +284,8 @@ mod tests {
     use super::*;
     use quantus_ur::{encode_bytes, decode_bytes};
 
+    const TEST_HEDGE: [u8; 32] = [0x42; 32];
+
     #[test]
     fn test_sign_encode_decode_roundtrip() {
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
@@ -296,7 +298,8 @@ mod tests {
             test_payload.to_vec(),
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            TEST_HEDGE
         ).expect("Signing should succeed");
         
         assert!(!signature.is_empty(), "Signature should not be empty");
@@ -324,7 +327,8 @@ mod tests {
             large_payload.clone(),
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            TEST_HEDGE
         ).expect("Signing should succeed");
         
         let ur_parts = encode_bytes(&signature).expect("Encoding should succeed");
@@ -347,7 +351,8 @@ mod tests {
             test_payload.to_vec(),
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            TEST_HEDGE
         ).expect("Signing should succeed");
         
         let ur_parts = encode_bytes(&signature).expect("Encoding should succeed");
@@ -372,7 +377,8 @@ mod tests {
             test_payload.to_vec(),
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            TEST_HEDGE
         ).expect("Signing should succeed");
         
         let cbor_wrapped = minicbor::to_vec(ByteVec::from(signature.clone()))
@@ -428,7 +434,8 @@ mod tests {
             large_payload,
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            TEST_HEDGE
         ).expect("Signing should succeed");
         
         let cbor_wrapped = minicbor::to_vec(ByteVec::from(signature.clone()))
@@ -491,7 +498,8 @@ fn known_value_test() {
             payload.clone(),
             path,
             mnemonic,
-            passphrase
+            passphrase,
+            TEST_HEDGE
         ).expect("sign_raw_tx failed");
 
         println!("Quantus signature (Hex): {}", hex::encode(&signature));

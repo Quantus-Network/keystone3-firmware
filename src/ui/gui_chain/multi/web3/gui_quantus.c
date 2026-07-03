@@ -51,6 +51,9 @@ void *GuiGetQuantusData(void)
 {
     printf("Quantus: GuiGetQuantusData called\r\n");
     CHECK_FREE_PARSE_RESULT(g_parseResult);
+    // g_quantusData aliased into the result freed above; clear it so a parse failure below
+    // cannot leave the display getters reading freed memory (audit M-4).
+    g_quantusData = NULL;
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
     printf("Quantus: Calling quantus_parse_tx with data pointer: %p\r\n", data);
@@ -61,6 +64,7 @@ void *GuiGetQuantusData(void)
         if (result->error_message) {
             printf("Quantus: Error message: %s\r\n", result->error_message);
         }
+        free_TransactionParseResult_DisplayQuantusTx(result);
         return NULL; 
     }
     g_parseResult = (void *)result;
@@ -362,7 +366,8 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     
     do {
         char *passphrase = GetPassphrase(GetCurrentAccountIndex());
-        char path[] = "m/44'/189189'/0'/0'/0'";
+        char path[BUFFER_SIZE_64];
+        snprintf_s(path, sizeof(path), QUANTUS_HD_PATH_FMT, 0);
 
         char *mnemonic = QuantusReconstructMnemonic();
         if (mnemonic == NULL) {
