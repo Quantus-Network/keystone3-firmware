@@ -119,7 +119,7 @@ static bool DeriveQuantusAddress(uint32_t index, char *outAddr, uint32_t addrLen
 
     char hdPath[BUFFER_SIZE_128];
     bool ok = false;
-    snprintf_s(hdPath, BUFFER_SIZE_128, "m/44'/189189'/%u'/0'/0'", index);
+    snprintf_s(hdPath, BUFFER_SIZE_128, QUANTUS_HD_PATH_FMT, index);
     char *passphrase = GetPassphrase(GetCurrentAccountIndex());
     QuantusAddrJobCtx ctx = { .mnemonic = mnemonic, .passphrase = passphrase, .path = hdPath, .result = NULL };
     QuantusRunCrypto(QuantusAddrJob, &ctx);
@@ -1146,7 +1146,7 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         if (QuantusAddrCacheGet(index, addr, sizeof(addr))) {
             item->index = index;
             strcpy_s(item->address, ADDRESS_MAX_LEN, addr);
-            snprintf_s(item->path, sizeof(item->path), "m/44'/189189'/%u'/0'/0'", index);
+            snprintf_s(item->path, sizeof(item->path), QUANTUS_HD_PATH_FMT, index);
             return;
         }
         if (DeriveQuantusAddress(index, addr, sizeof(addr), item->path, sizeof(item->path))) {

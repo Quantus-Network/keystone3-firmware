@@ -20,6 +20,7 @@ use crate::{
 };
 use crate::common::free::Free;
 use crate::quantus::structs::DisplayQuantusTx;
+use zeroize::Zeroize;
 
 #[cfg(feature = "quantus")]
 use quantus_ur::encode_bytes;
@@ -40,13 +41,48 @@ pub unsafe extern "C" fn quantus_sign_tx(
     let mnemonic = recover_c_char(mnemonic);
     let passphrase = recover_c_char(passphrase);
     let path = recover_c_char(path);
+    if master_fingerprint_len != 4 {
+        return UREncodeResult::from(RustCError::InvalidMasterFingerprint).c_ptr();
+    }
     let mfp = extract_array!(master_fingerprint, u8, master_fingerprint_len);
-    
+
+    // Bind the signing session to the device identity the user verified: the seed about to
+    // sign must reproduce the active account's master fingerprint (audit M-2). This catches
+    // wrong-account reconstruction, corrupted entropy, and passphrase/wallet mismatches.
+    let mut seed = keystore::algorithms::crypto::bip39_mnemonic_to_seed(
+        &mnemonic,
+        passphrase.as_bytes(),
+    );
+    let derived_mfp = keystore::algorithms::secp256k1::get_master_fingerprint_by_seed(&seed);
+    seed.zeroize();
+    match derived_mfp {
+        Ok(fp) if fp.as_ref() as &[u8] == mfp => {}
+        Ok(_) => return UREncodeResult::from(RustCError::MasterFingerprintMismatch).c_ptr(),
+        Err(e) => {
+            return UREncodeResult::from(RustCError::UnexpectedError(alloc::format!(
+                "master fingerprint derivation failed: {}",
+                e
+            )))
+            .c_ptr()
+        }
+    }
+
+    // Fresh TRNG randomness for FIPS 204 hedged signing (audit M-1); fail closed if the
+    // hardware RNG is unavailable rather than falling back to deterministic signing.
+    let mut hedge = [0u8; 32];
+    if let Err(e) = getrandom::getrandom(&mut hedge) {
+        return UREncodeResult::from(RustCError::UnexpectedError(alloc::format!(
+            "TRNG failure: {}",
+            e
+        )))
+        .c_ptr();
+    }
+
     // Expect Bytes type from UR decoder because we mapped ur:quantus-sign-request to Bytes
     let bytes_ur = extract_ptr_with_type!(data, Bytes);
     let raw_bytes = bytes_ur.get_bytes();
 
-    match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase) {
+    match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase, hedge) {
         Ok(sign_result) => {
             match encode_bytes(&sign_result) {
                 Ok(ur_parts) => {
@@ -100,11 +136,13 @@ pub unsafe extern "C" fn quantus_sign_tx(
     }
 }
 
+// The raw quantus-sign-request UR carries no fingerprint to compare against; device binding
+// is enforced at signing time in quantus_sign_tx (the seed must reproduce the device mfp).
 #[no_mangle]
 pub unsafe extern "C" fn quantus_check_tx(
     data: PtrUR,
-    master_fingerprint: PtrBytes,
-    master_fingerprint_len: c_int,
+    _master_fingerprint: PtrBytes,
+    _master_fingerprint_len: c_int,
 ) -> *mut TransactionCheckResult {
     let bytes_ur = extract_ptr_with_type!(data, Bytes);
     let raw_bytes = bytes_ur.get_bytes();
@@ -234,12 +272,51 @@ mod tests {
     }
     
     #[test]
+    fn test_quantus_sign_tx_rejects_wrong_master_fingerprint() {
+        let bytes_ur = Bytes::new(b"payload".to_vec());
+        let bytes_ptr = Box::into_raw(Box::new(bytes_ur)) as PtrUR;
+        let mnemonic_cstr = cstr_core::CString::new(
+            "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        ).unwrap();
+        let passphrase_cstr = cstr_core::CString::new("").unwrap();
+        let path_cstr = cstr_core::CString::new("m/44'/189189'/0'/0'/0'").unwrap();
+        let wrong_mfp = [0u8; 4];
+
+        let result = unsafe {
+            quantus_sign_tx(
+                bytes_ptr,
+                mnemonic_cstr.as_ptr() as PtrString,
+                passphrase_cstr.as_ptr() as PtrString,
+                path_cstr.as_ptr() as PtrString,
+                wrong_mfp.as_ptr() as PtrBytes,
+                wrong_mfp.len() as c_int,
+            )
+        };
+
+        unsafe {
+            #[repr(C)]
+            struct UREncodeResultLayout {
+                is_multi_part: bool,
+                data: *mut c_char,
+                encoder: PtrEncoder,
+                error_code: u32,
+                error_message: *mut c_char,
+            }
+            let layout = &*(result as *const UREncodeResultLayout);
+            assert_ne!(layout.error_code, 0, "signing with a foreign mfp must fail");
+            free_ur_encode_result(result);
+            free_ptr_with_type!(bytes_ptr, Bytes);
+        }
+    }
+
+    #[test]
     fn test_quantus_sign_tx_encode_decode_roundtrip() {
         let test_payload = b"test payload for signing";
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
         let test_path = "m/44'/189189'/0'/0'/0'";
-        let mfp = [0u8; 4];
+        // Master fingerprint of the test mnemonic with empty passphrase (BIP32 reference value).
+        let mfp = [0x73u8, 0xc5, 0xda, 0x0a];
         
         let bytes_ur = Bytes::new(test_payload.to_vec());
         let bytes_ptr = Box::into_raw(Box::new(bytes_ur)) as PtrUR;
@@ -275,15 +352,25 @@ mod tests {
         let decoded_signature = decode_bytes(&ur_parts)
             .expect("quantus_ur::decode_bytes should succeed");
         
+        // Hedged signing draws fresh randomness per call, so signature bytes are not
+        // reproducible; check the public key and cryptographic validity instead.
         let expected_signature = sign_raw_tx(
             test_payload.to_vec(),
             test_path,
             test_mnemonic,
-            test_passphrase
+            test_passphrase,
+            [0x42; 32]
         ).expect("Signing should succeed");
         
-        assert_eq!(decoded_signature, expected_signature, 
-            "Decoded signature should match expected signature");
+        use qp_rusty_crystals_dilithium::ml_dsa_87::{PublicKey, SIGNBYTES};
+        assert_eq!(decoded_signature.len(), expected_signature.len(),
+            "Decoded signature should have the sig||pubkey length");
+        assert_eq!(decoded_signature[SIGNBYTES..], expected_signature[SIGNBYTES..],
+            "Public key portion should match the derived key");
+        let public_key = PublicKey::from_bytes(&decoded_signature[SIGNBYTES..])
+            .expect("Public key should deserialize");
+        assert!(public_key.verify(test_payload, &decoded_signature[..SIGNBYTES], None),
+            "Signature should verify under the embedded public key");
         
         unsafe {
             free_ur_encode_result(result);

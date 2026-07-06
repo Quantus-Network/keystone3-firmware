@@ -28,7 +28,8 @@ const SHORT_PAYLOAD: &str = "0200007416854906f03a9dff66e3270a736c44e15970ac03a63
 const LONG_PAYLOAD: &str = "130020a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a70300000007000000000000000014000083000000020000004901bf5c57fd3f9e726af399c763de6670dbdb115a91c0237e173f16eef65e72111111111111111111111111111111111111111111111111111111111111111100";
 
 fn device_sign(payload: &[u8]) -> (DilithiumSignatureScheme, AccountId32) {
-    let sig_with_pubkey = sign_raw_tx(payload.to_vec(), PATH, MNEMONIC, "").expect("sign");
+    let sig_with_pubkey =
+        sign_raw_tx(payload.to_vec(), PATH, MNEMONIC, "", [0x42; 32]).expect("sign");
     let sig_with_public =
         DilithiumSignatureWithPublic::from_bytes(&sig_with_pubkey).expect("sig||pubkey layout");
     let signer = DilithiumSigner::Dilithium(sig_with_public.public()).into_account();

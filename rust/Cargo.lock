@@ -5197,6 +5197,7 @@ dependencies = [
  "keystore",
  "minicbor",
  "no_std_io2",
+ "qp-rusty-crystals-dilithium",
  "quantus_ur",
  "rand_core 0.6.4",
  "rsa",

@@ -75,11 +75,7 @@ pub fn get_ledger_bitbox02_master_key_by_mnemonic(
     passphrase: &[u8],
     mnemonic_words: String,
 ) -> Result<XPrv> {
-    let salt = ["mnemonic".as_bytes(), passphrase].concat();
-    let mut key = vec![0u8; 64];
-    let digest = Sha512::new();
-    let hmac = &mut hmac::Hmac::new(digest, mnemonic_words.as_bytes());
-    pbkdf2::pbkdf2(hmac, &salt, 2048, &mut key);
+    let key = crate::algorithms::crypto::bip39_mnemonic_to_seed(&mnemonic_words, passphrase).to_vec();
 
     let digest = Sha512::new();
     let hmac = &mut hmac::Hmac::new(digest, "ed25519 seed".as_bytes());
