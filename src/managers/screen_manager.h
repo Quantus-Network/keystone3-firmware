@@ -8,6 +8,9 @@
 void ScreenManagerInit(void);
 void SetLockScreen(bool enable);
 void SetPageLockScreen(bool enable);
+// Disable page auto-lock for a bounded grace period; it re-arms itself (and restarts the idle
+// countdown) unless SetPageLockScreen is called sooner.
+void SuspendPageLockScreen(void);
 void SetLockTimeState(bool enable);
 bool IsPreviousLockScreenEnable(void);
 bool IsPageLockScreenEnable(void);

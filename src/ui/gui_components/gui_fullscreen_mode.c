@@ -3,7 +3,18 @@
 
 static lv_obj_t *fullscreen_container = NULL;
 static lv_obj_t *fullscreen_object = NULL;
-bool g_original_lock_screen = NULL;
+static bool g_lockSuppressed = false;
+
+static void RestoreSuppressedLock(void)
+{
+    // Only undo a suppression this component itself made, so an owning screen that manages
+    // auto-lock (e.g. the signed-tx QR with its bounded grace) is never overridden with a
+    // stale state (audit M-3 follow-up).
+    if (g_lockSuppressed) {
+        SetPageLockScreen(true);
+        g_lockSuppressed = false;
+    }
+}
 
 void GuiFullscreenModeHandler(lv_event_t * e)
 {
@@ -24,9 +35,6 @@ void GuiFullscreenContainerGenerate(uint16_t width, uint16_t height, lv_color_t 
 
 void GuiFullscreenModeInit(uint16_t width, uint16_t height, lv_color_t bg_color)
 {
-    // Restore the page lock state (not the global one) on exit, so a screen that disabled auto-lock
-    // (e.g. the signed-tx QR) stays awake after the user enlarges and shrinks the QR again.
-    g_original_lock_screen = IsPageLockScreenEnable();
     GuiFullscreenContainerGenerate(width, height, bg_color);
 }
 
@@ -41,13 +49,19 @@ lv_obj_t *GuiFullscreenModeCreateObject(lv_obj_t* (*create_object_func)(lv_obj_t
 
 void GuiEnterFullscreenMode()
 {
-    SetPageLockScreen(false);
+    // Keep the device awake while the enlarged QR is being scanned, but only for a bounded
+    // grace period. If the owning screen already suppressed auto-lock, its policy stays in
+    // charge and is left untouched on exit.
+    if (IsPageLockScreenEnable()) {
+        SuspendPageLockScreen();
+        g_lockSuppressed = true;
+    }
     lv_obj_clear_flag(fullscreen_container, LV_OBJ_FLAG_HIDDEN);
 }
 
 void GuiExitFullscreenMode()
 {
-    SetPageLockScreen(g_original_lock_screen);
+    RestoreSuppressedLock();
     lv_obj_add_flag(fullscreen_container, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -64,7 +78,7 @@ void GuiFullscreenModeCleanUp()
 {
     GUI_DEL_OBJ(fullscreen_object);
     GUI_DEL_OBJ(fullscreen_container);
-    SetPageLockScreen(g_original_lock_screen);
+    RestoreSuppressedLock();
 }
 
 lv_obj_t *GuiFullscreenModeGetCreatedObject()

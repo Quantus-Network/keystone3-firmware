@@ -426,6 +426,10 @@ void SetPageLockScreen(bool enable)
 {
 }
 
+void SuspendPageLockScreen(void)
+{
+}
+
 uint32_t GetCurrentStampTime(void)
 {
     return 0;

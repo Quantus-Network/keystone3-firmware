@@ -18,6 +18,10 @@
 
 #define LOCK_SCREEN_TICK                                    1000
 #define LOCK_SCREEN_TIME_OUT                                60 * 1000
+// Bounded keep-awake (audit M-3): the longest a screen may suppress page auto-lock before it
+// re-arms itself; long enough to scan a large animated QR, short enough that an unattended
+// device still locks.
+#define PAGE_LOCK_SUSPEND_GRACE_MS                          (5 * 60 * 1000)
 
 static void ShortPressHandler(void);
 static void ReleaseHandler(void);
@@ -30,6 +34,7 @@ static volatile bool g_lockScreenEnable;
 static osTimerId_t g_lockScreenTimer;
 static volatile uint32_t g_lockScreenTick;
 static volatile uint32_t g_lockTimeOut;
+static volatile uint32_t g_pageLockSuspendTick;
 
 static volatile bool g_lockTimeState = false;
 static volatile bool g_lockDeivceTimeAlive = false;
@@ -43,13 +48,22 @@ void ScreenManagerInit(void)
     g_lockScreenEnable = true;
     g_lockScreenTimer = osTimerNew(LockScreenTimerFunc, osTimerPeriodic, NULL, NULL);
     g_lockScreenTick = 0;
+    g_pageLockSuspendTick = 0;
     g_lockTimeOut = GetAutoLockScreen() * 1000;
     osTimerStart(g_lockScreenTimer, LOCK_SCREEN_TICK);
 }
 
 void SetPageLockScreen(bool enable)
 {
+    // An explicit set always cancels a pending bounded suspension.
+    g_pageLockSuspendTick = 0;
     g_pageLockScreenEnable = enable;
+}
+
+void SuspendPageLockScreen(void)
+{
+    g_pageLockScreenEnable = false;
+    g_pageLockSuspendTick = PAGE_LOCK_SUSPEND_GRACE_MS;
 }
 
 void SetLockScreen(bool enable)
@@ -153,6 +167,14 @@ static void LockScreen(void)
 
 static void LockScreenTimerFunc(void *argument)
 {
+    if (g_pageLockSuspendTick > 0) {
+        g_pageLockSuspendTick = g_pageLockSuspendTick > LOCK_SCREEN_TICK ? g_pageLockSuspendTick - LOCK_SCREEN_TICK : 0;
+        if (g_pageLockSuspendTick == 0) {
+            // Grace period over: re-arm page auto-lock and restart the idle countdown.
+            g_pageLockScreenEnable = true;
+            ClearLockScreenTime();
+        }
+    }
     g_lockScreenTick += LOCK_SCREEN_TICK;
     if (g_lockScreenTick >= g_lockTimeOut && g_lockTimeOut != 0) {
         LockScreen();
