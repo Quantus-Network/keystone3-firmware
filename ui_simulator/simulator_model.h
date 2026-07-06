@@ -37,6 +37,7 @@ bool FatfsFileExist(const char *path);
 bool GetEnsName(const char *addr, char *name);
 void FpWipeManageInfo(void);
 void SetPageLockScreen(bool enable);
+void SuspendPageLockScreen(void);
 uint8_t GetFingerSignFlag(void);
 bool IsPreviousLockScreenEnable(void);
 bool IsPageLockScreenEnable(void);

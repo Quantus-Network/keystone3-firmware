@@ -28,23 +28,16 @@
 
 static void GuiTransactionSignatureNVSBarInit();
 static void GuiCreateSignatureQRCode(lv_obj_t *parent);
-static void KeepAwakeGraceExpiredHandler(lv_timer_t *timer);
-
-// How long the signature QR screen may suppress auto-lock before it re-arms (audit M-3):
-// long enough to scan a large animated QR, short enough that an unattended device still locks.
-#define SIGNATURE_KEEP_AWAKE_GRACE_MS       (5 * 60 * 1000)
 
 static ViewType g_viewType;
 static uint8_t g_chainType = CHAIN_BUTT;
 static PageWidget_t *g_pageWidget;
-static lv_timer_t *g_keepAwakeGraceTimer = NULL;
 
 void GuiTransactionSignatureInit(uint8_t viewType)
 {
     // Keep the device awake: scanning the signed-tx QR with a wallet can take a while with no
-    // on-device interaction. Bounded by a grace timer so auto-lock is only deferred, not defeated.
-    SetPageLockScreen(false);
-    g_keepAwakeGraceTimer = lv_timer_create(KeepAwakeGraceExpiredHandler, SIGNATURE_KEEP_AWAKE_GRACE_MS, NULL);
+    // on-device interaction. Bounded suspension (audit M-3): auto-lock re-arms after a grace period.
+    SuspendPageLockScreen();
     g_viewType = viewType;
     g_chainType = ViewTypeToChainTypeSwitch(g_viewType);
     g_pageWidget = CreatePageWidget();
@@ -52,24 +45,12 @@ void GuiTransactionSignatureInit(uint8_t viewType)
     GuiCreateSignatureQRCode(g_pageWidget->contentZone);
 }
 
-static void KeepAwakeGraceExpiredHandler(lv_timer_t *timer)
-{
-    // Grace period over: re-enable page auto-lock and restart the idle countdown, so the
-    // device locks after the user's configured timeout even if this screen stays up.
-    SetPageLockScreen(true);
-    ClearLockScreenTime();
-    lv_timer_del(timer);
-    g_keepAwakeGraceTimer = NULL;
-}
-
 void GuiTransactionSignatureDeInit(void)
 {
-    if (g_keepAwakeGraceTimer != NULL) {
-        lv_timer_del(g_keepAwakeGraceTimer);
-        g_keepAwakeGraceTimer = NULL;
-    }
-    SetPageLockScreen(true);
+    // Tear down the QR (and its fullscreen component) first so re-enabling auto-lock is the
+    // final word on the page-lock state (audit M-3 follow-up).
     GuiAnimatingQRCodeDestroyTimer();
+    SetPageLockScreen(true);
     if (g_pageWidget != NULL) {
         DestroyPageWidget(g_pageWidget);
         g_pageWidget = NULL;
