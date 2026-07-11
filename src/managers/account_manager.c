@@ -54,6 +54,72 @@ static int32_t ReadCurrentAccountInfo(void)
     return ret;
 }
 
+/// @brief Recompute and persist master fingerprint (and entropyLen if missing) when account
+/// info was never stored (e.g. hand-crafted simulator secrets with zeroed param). TON wallets
+/// intentionally keep mfp = 0 and are skipped. Called after a successful password verify so
+/// the seed is available.
+static int32_t HealAccountInfoIfNeeded(const char *password)
+{
+    uint8_t seed[SEED_LEN];
+    uint8_t entropy[ENTROPY_MAX_LEN];
+    uint8_t entropyLen = 0;
+    int32_t ret = SUCCESS_CODE;
+    uint8_t *mfp = g_currentAccountInfo.mfp;
+    bool mfpZero = (mfp[0] | mfp[1] | mfp[2] | mfp[3]) == 0;
+
+    if (GetMnemonicType() == MNEMONIC_TYPE_TON) {
+        return SUCCESS_CODE;
+    }
+    // Nothing to fix if fingerprint is present and entropy length is known.
+    if (!mfpZero && g_currentAccountInfo.entropyLen != 0) {
+        return SUCCESS_CODE;
+    }
+
+    do {
+        if (g_currentAccountInfo.entropyLen == 0) {
+            ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+            CHECK_ERRCODE_BREAK("GetAccountEntropy heal", ret);
+            if (entropyLen > 0) {
+                g_currentAccountInfo.entropyLen = entropyLen;
+            }
+        }
+
+        if (mfpZero) {
+            ret = GetAccountSeed(GetCurrentAccountIndex(), seed, password);
+            CHECK_ERRCODE_BREAK("GetAccountSeed heal", ret);
+            uint32_t seedLen = GetCurrentAccountSeedLen();
+            if (seedLen == 0) {
+                seedLen = SEED_LEN;
+            }
+            SimpleResponse_u8 *simpleResponse = get_master_fingerprint((PtrBytes)seed, seedLen);
+            if (simpleResponse == NULL) {
+                printf("HealAccountInfoIfNeeded: get_master_fingerprint returned NULL\r\n");
+                ret = ERR_KEYSTORE_AUTH;
+                break;
+            }
+            if (simpleResponse->error_code != 0) {
+                printf("HealAccountInfoIfNeeded: get_master_fingerprint error %d\r\n",
+                       simpleResponse->error_code);
+                ret = simpleResponse->error_code;
+                free_simple_response_u8(simpleResponse);
+                break;
+            }
+            PrintArray("healed masterFingerprint", simpleResponse->data, 4);
+            SetCurrentAccountMfp(simpleResponse->data);
+            free_simple_response_u8(simpleResponse);
+        }
+
+        ret = SaveCurrentAccountInfo();
+        CHECK_ERRCODE_BREAK("SaveCurrentAccountInfo heal", ret);
+        printf("HealAccountInfoIfNeeded: account info repaired (entropyLen=%u)\r\n",
+               g_currentAccountInfo.entropyLen);
+    } while (0);
+
+    CLEAR_ARRAY(seed);
+    CLEAR_ARRAY(entropy);
+    return ret;
+}
+
 /// @brief Keystore init, secret self test.
 /// @return err code.
 int32_t AccountManagerInit(void)
@@ -244,6 +310,15 @@ int32_t VerifyPasswordAndLogin(uint8_t *accountIndex, const char *password)
             *accountIndex = tempIndex;
         }
         ret = ReadCurrentAccountInfo();
+        CHECK_ERRCODE_RETURN_INT(ret);
+        // Repair zeroed/missing mfp + entropyLen before any chain binding (Quantus audit M-2,
+        // PSBT mfp checks, etc.) relies on GetMasterFingerPrint().
+        ret = HealAccountInfoIfNeeded(password);
+        if (ret != SUCCESS_CODE) {
+            printf("HealAccountInfoIfNeeded failed ret=%d (continuing login)\r\n", ret);
+            // Non-fatal: allow login; signing may still fail closed on mfp mismatch.
+            ret = SUCCESS_CODE;
+        }
         g_publicInfo.loginPasswordErrorCount = 0;
         g_publicInfo.currentPasswordErrorCount = 0;
 #ifndef BTC_ONLY
