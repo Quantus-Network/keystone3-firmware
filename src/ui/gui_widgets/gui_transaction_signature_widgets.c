@@ -25,6 +25,10 @@
 #include "gui_page.h"
 #include "account_manager.h"
 #include "gui_animating_qrcode.h"
+#include "gui_pending_hintbox.h"
+#include "gui_framework.h"
+#include "librust_c.h"
+#include <string.h>
 
 static void GuiTransactionSignatureNVSBarInit();
 static void GuiCreateSignatureQRCode(lv_obj_t *parent);
@@ -70,6 +74,18 @@ void GuiTransactionSignatureHandleURGenerate(char *data, uint16_t len)
 void GuiTransactionSignatureHandleURUpdate(char *data, uint16_t len)
 {
     GuiAnimatingQRCodeUpdate(data, len);
+}
+
+void GuiTransactionSignatureHandleURGenerateFail(char *message)
+{
+    // Success path removes the pending box in GuiAnimantingQRCodeFirstUpdate; the fail path
+    // previously left "transaction signing" up forever (ERR_GUI_UNHANDLED on the view).
+    GuiPendingHintBoxRemove();
+    int32_t code = UnexpectedError;
+    if (message != NULL && (strstr(message, "finger print") != NULL || strstr(message, "fingerprint") != NULL)) {
+        code = MasterFingerprintMismatch;
+    }
+    GuiCreateRustErrorWindow(code, message, NULL, (ErrorWindowCallback)GuiCloseCurrentWorkingView);
 }
 
 static void GuiTransactionSignatureNVSBarInit()

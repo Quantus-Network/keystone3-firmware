@@ -259,6 +259,21 @@ int32_t SimulatorSaveAccountSecret(uint8_t accountIndex, const AccountSecret_t *
 {
     uint8_t buffer[JSON_MAX_LEN] = {'\0'};
     uint32_t size = 0;
+    cJSON *existingParam = NULL;
+
+    // Preserve AccountInfo_t (mfp, wallet name, entropyLen, …) written via SE_HmacEncryptWrite
+    // PAGE_INDEX_PARAM. Rewriting the secret file from scratch used to wipe param to zeros and
+    // break GetMasterFingerPrint / Quantus device-binding checks after password changes.
+    OperateStorageDataFunc getFunc = FindSimulatorStorageFunc(SIMULATOR_USER1_SECRET_ADDR + accountIndex * 0x1000, true);
+    if (getFunc) {
+        uint8_t existingBuf[JSON_MAX_LEN] = {'\0'};
+        getFunc(SIMULATOR_USER1_SECRET_ADDR + accountIndex * 0x1000, existingBuf, JSON_MAX_LEN);
+        cJSON *existingRoot = cJSON_Parse((char *)existingBuf);
+        if (existingRoot != NULL) {
+            existingParam = cJSON_DetachItemFromObject(existingRoot, "param");
+            cJSON_Delete(existingRoot);
+        }
+    }
 
     cJSON *rootJson = cJSON_CreateObject();
     InsertJsonU8Array(rootJson, accountSecret->entropy, ENTROPY_MAX_LEN, "entropy");
@@ -269,11 +284,18 @@ int32_t SimulatorSaveAccountSecret(uint8_t accountIndex, const AccountSecret_t *
     cJSON_AddItemToObject(rootJson, "entropy_len", item);
     item = cJSON_CreateString(password);
     cJSON_AddItemToObject(rootJson, "password", item);
+    if (existingParam != NULL) {
+        cJSON_AddItemToObject(rootJson, "param", existingParam);
+        existingParam = NULL;
+    }
     char *jsonBuf = cJSON_PrintBuffered(rootJson, BUFFER_SIZE_1024, false);
     strncpy(buffer, jsonBuf, JSON_MAX_LEN);
     OperateStorageDataFunc func = FindSimulatorStorageFunc(SIMULATOR_USER1_SECRET_ADDR + accountIndex * 0x1000, false);
     func(SIMULATOR_USER1_SECRET_ADDR + accountIndex * 0x1000, buffer, strlen(jsonBuf));
     cJSON_Delete(rootJson);
+    if (existingParam != NULL) {
+        cJSON_Delete(existingParam);
+    }
 
     return SUCCESS_CODE;
 }
