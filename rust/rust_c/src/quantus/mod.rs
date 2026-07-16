@@ -2,7 +2,7 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::str::FromStr;
-use app_quantus::{check_raw_tx, sign_raw_tx, parse_quantus_tx};
+use app_quantus::{check_raw_tx, sign_raw_tx, parse_quantus_tx, parse_quantus_tx_light};
 use cty::{c_char, c_int, c_void};
 use ur_registry::bytes::Bytes;
 use ur_registry::traits::RegistryItem;
@@ -166,6 +166,37 @@ pub unsafe extern "C" fn quantus_parse_tx(data: PtrUR) -> Ptr<TransactionParseRe
     match parse_quantus_tx(raw_bytes.as_slice()) {
         Ok(tx) => {
             rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully"));
+            rust_tools::debug!(alloc::format!("Quantus: Type: {}", tx.get_tx_type()));
+            rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
+            rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));
+            rust_tools::debug!(alloc::format!("Quantus: Reversible: {}", tx.get_is_reversible()));
+            rust_tools::debug!(alloc::format!("Quantus: Timeframe: {}", tx.get_reversible_timeframe()));
+            rust_tools::debug!(alloc::format!("Quantus: Nonce: {}", tx.get_nonce()));
+            rust_tools::debug!(alloc::format!("Quantus: Tip: {}", tx.get_tip()));
+            rust_tools::debug!(alloc::format!("Quantus: Network: {}", tx.get_network()));
+            rust_tools::debug!(alloc::format!("Quantus: Era: {}", tx.get_era()));
+            TransactionParseResult::success(DisplayQuantusTx::from(&tx).c_ptr()).c_ptr()
+        },
+        Err(e) => {
+            rust_tools::debug!(alloc::format!("Quantus: Parse error: {:?}", e));
+            TransactionParseResult::from(e).c_ptr()
+        },
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn quantus_parse_tx_light(data: PtrUR) -> Ptr<TransactionParseResult<DisplayQuantusTx>> {
+    rust_tools::debug!(alloc::format!("Quantus: quantus_parse_tx_light called"));
+
+    let bytes_ur = extract_ptr_with_type!(data, Bytes);
+    let raw_bytes = bytes_ur.get_bytes();
+
+    rust_tools::debug!(alloc::format!("Quantus: Encoded transaction (hex): {}", hex::encode(&raw_bytes)));
+    rust_tools::debug!(alloc::format!("Quantus: Encoded transaction length: {} bytes", raw_bytes.len()));
+
+    match parse_quantus_tx_light(raw_bytes.as_slice()) {
+        Ok(tx) => {
+            rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully (light)"));
             rust_tools::debug!(alloc::format!("Quantus: Type: {}", tx.get_tx_type()));
             rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
             rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));

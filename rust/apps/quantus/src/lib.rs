@@ -118,16 +118,21 @@ fn push_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, val
 
 // Flatten a call into ordered (label, value) rows for the per-type detail view. Recurses into the
 // inner call of a multisig proposal so the user sees exactly what is being proposed (no blind signing).
-fn push_address_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, address: &str) {
+fn push_address_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, address: &str, with_checkphrase: bool) {
     push_row(labels, values, label, address.to_string());
-    push_row(labels, values, "Checkphrase", checkphrase::from_address(address));
+    let phrase = if with_checkphrase {
+        checkphrase::from_address(address)
+    } else {
+        String::new()
+    };
+    push_row(labels, values, "Checkphrase", phrase);
 }
 
-fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String>) {
+fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String>, with_checkphrase: bool) {
     match tx {
         QuantusTx::Transfer { to, amount, is_reversible, reversible_timeframe } => {
             push_row(labels, values, "Amount", alloc::format!("{} QUAN", format_amount(*amount)));
-            push_address_row(labels, values, "To", to);
+            push_address_row(labels, values, "To", to, with_checkphrase);
             if *is_reversible {
                 push_row(labels, values, "Reversible", "Yes".to_string());
                 if let Some(ms) = reversible_timeframe {
@@ -139,27 +144,27 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
             push_row(labels, values, "Threshold", alloc::format!("{} of {}", threshold, signers.len()));
             push_row(labels, values, "Nonce", nonce.to_string());
             for (i, signer) in signers.iter().enumerate() {
-                push_address_row(labels, values, &alloc::format!("Signer {}", i + 1), signer);
+                push_address_row(labels, values, &alloc::format!("Signer {}", i + 1), signer, with_checkphrase);
             }
         }
         QuantusTx::MultisigPropose { multisig, expiry, inner } => {
-            push_address_row(labels, values, "Multisig", multisig);
+            push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Expiry Block", expiry.to_string());
             push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
-            append_rows(inner, labels, values);
+            append_rows(inner, labels, values, with_checkphrase);
         }
         QuantusTx::MultisigApprove { multisig, proposal_id } => {
-            push_address_row(labels, values, "Multisig", multisig);
+            push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
         }
         QuantusTx::MultisigExecute { multisig, proposal_id } => {
-            push_address_row(labels, values, "Multisig", multisig);
+            push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
         }
     }
 }
 
-fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
+fn build_parsed_tx(parsed: &parser::ParsedPayload, with_checkphrase: bool) -> ParsedQuantusTx {
     let tx = &parsed.call;
     let tx_type = tx_type_title(tx).to_string();
     let nonce = parsed.extensions.nonce.to_string();
@@ -173,7 +178,7 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
             Some(ms) => format_duration(*ms),
             None => String::new(),
         };
-        let to_checkphrase = if !to.is_empty() {
+        let to_checkphrase = if with_checkphrase && !to.is_empty() {
             checkphrase::from_address(to)
         } else {
             String::new()
@@ -199,7 +204,7 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
     // extensions so nothing that is signed goes undisplayed.
     let mut labels = Vec::new();
     let mut values = Vec::new();
-    append_rows(tx, &mut labels, &mut values);
+    append_rows(tx, &mut labels, &mut values, with_checkphrase);
     push_row(&mut labels, &mut values, "Network", network.clone());
     push_row(&mut labels, &mut values, "Signer Nonce", nonce.clone());
     push_row(&mut labels, &mut values, "Tip", alloc::format!("{} QUAN", tip));
@@ -222,6 +227,14 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
 }
 
 pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
+    parse_quantus_tx_impl(data, true)
+}
+
+pub fn parse_quantus_tx_light(data: &[u8]) -> Result<ParsedQuantusTx> {
+    parse_quantus_tx_impl(data, false)
+}
+
+fn parse_quantus_tx_impl(data: &[u8], with_checkphrase: bool) -> Result<ParsedQuantusTx> {
     #[cfg(not(test))]
     debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
 
@@ -229,7 +242,7 @@ pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
         Ok(parsed) => {
             #[cfg(not(test))]
             debug!(alloc::format!("parse_payload success: {}", parsed.call));
-            Ok(build_parsed_tx(&parsed))
+            Ok(build_parsed_tx(&parsed, with_checkphrase))
         }
         Err(_e) => {
             #[cfg(not(test))]

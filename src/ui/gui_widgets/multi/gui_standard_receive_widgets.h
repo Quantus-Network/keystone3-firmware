@@ -13,4 +13,5 @@ void GuiResetAllStandardAddressIndex(void);
 void GuiStandardReceivePasswordErrorCount(void *param);
 void GuiStandardReceivePasswordSuccess(void);
 void GuiStandardReceiveQuantusAddressReady(void);
+void GuiStandardReceiveQuantusCheckphraseReady(void);
 #endif

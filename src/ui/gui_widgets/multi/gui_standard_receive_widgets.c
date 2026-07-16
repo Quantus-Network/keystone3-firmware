@@ -71,6 +71,14 @@ static bool g_quantusAsyncOk;
 // from the secret cache once derivation finishes, so it does not linger in memory.
 static bool g_quantusClearPinAfterDerive = false;
 
+// Off-UI-thread checkphrase state. The address/QR is shown immediately; the checkphrase is computed
+// in the background and filled in when ready. Stale results are ignored if the user switched addresses
+// or left the screen before the job finished.
+static char g_quantusCheckphraseExpectedAddr[ADDRESS_MAX_LEN];
+static char g_quantusCheckphraseAsyncAddr[ADDRESS_MAX_LEN];
+static char g_quantusCheckphraseResult[96];
+static bool g_quantusCheckphraseAsyncOk;
+
 static bool QuantusAddrCacheGet(uint32_t index, char *out, uint32_t outLen)
 {
     uint8_t mfp[4];
@@ -150,6 +158,30 @@ static int32_t QuantusAddressBgFunc(const void *inData, uint32_t inDataLen)
     g_quantusAsyncIndex = *(const uint32_t *)inData;
     g_quantusAsyncOk = DeriveQuantusAddress(g_quantusAsyncIndex, g_quantusAsyncAddr, sizeof(g_quantusAsyncAddr), NULL, 0);
     GuiApiEmitSignal(SIG_QUANTUS_ADDRESS_READY, NULL, 0);
+    return SUCCESS_CODE;
+}
+
+// Runs on the background task so the receive screen (address + QR) appears instantly. The
+// checkphrase is filled in via SIG_QUANTUS_CHECKPHRASE_READY once it has been computed.
+static int32_t QuantusCheckphraseBgFunc(const void *inData, uint32_t inDataLen)
+{
+    (void)inDataLen;
+    const char *addr = (const char *)inData;
+    printf("Quantus: receive checkphrase bg job start addr=%s\n", addr ? addr : "(null)");
+    strcpy_s(g_quantusCheckphraseAsyncAddr, sizeof(g_quantusCheckphraseAsyncAddr), addr);
+    SimpleResponse_c_char *phrase = quantus_get_checkphrase((char *)addr);
+    g_quantusCheckphraseAsyncOk = (phrase && phrase->error_code == 0 && phrase->data);
+    if (g_quantusCheckphraseAsyncOk) {
+        strcpy_s(g_quantusCheckphraseResult, sizeof(g_quantusCheckphraseResult), phrase->data);
+        printf("Quantus: receive checkphrase computed '%s'\n", g_quantusCheckphraseResult);
+    } else {
+        printf("ERROR: Quantus receive checkphrase generation failed (phrase=%p err=%d)\n",
+               (void *)phrase, phrase ? phrase->error_code : -1);
+    }
+    if (phrase) {
+        free_simple_response_c_char(phrase);
+    }
+    GuiApiEmitSignal(SIG_QUANTUS_CHECKPHRASE_READY, NULL, 0);
     return SUCCESS_CODE;
 }
 #endif
@@ -672,7 +704,7 @@ static uint16_t GetAddrYExtend(void)
         return 30;
     }
     if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
-        return 30;
+        return 100;
     }
 #endif
     return 0;
@@ -683,13 +715,17 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
     lv_obj_t *tempObj;
     uint16_t yOffset = 0;
     uint16_t addrYExtend = GetAddrYExtend();
+    bool quantus = false;
+#ifdef WEB3_VERSION
+    quantus = (g_chainCard == HOME_WALLET_CARD_QUANTUS);
+#endif
 
     g_standardReceiveWidgets.qrCodeCont = GuiCreateContainerWithParent(parent, 408, 524 + addrYExtend);
     lv_obj_align(g_standardReceiveWidgets.qrCodeCont, LV_ALIGN_TOP_MID, 0, 0);
     lv_obj_set_style_bg_color(g_standardReceiveWidgets.qrCodeCont, DARK_BG_COLOR, LV_PART_MAIN);
     lv_obj_set_style_radius(g_standardReceiveWidgets.qrCodeCont, 24, LV_PART_MAIN);
 
-    yOffset += 36;
+    yOffset += quantus ? 44 : 36;
     g_standardReceiveWidgets.qrCode = CreateStandardReceiveQRCode(g_standardReceiveWidgets.qrCodeCont, 336, 336);
     GuiFullscreenModeInit(480, 800, WHITE_COLOR);
     GuiFullscreenModeCreateObject(CreateStandardReceiveQRCode, 420, 420);
@@ -697,7 +733,7 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
     lv_obj_align(g_standardReceiveWidgets.qrCode, LV_ALIGN_TOP_MID, 0, yOffset);
     yOffset += 336;
 
-    yOffset += 16;
+    yOffset += quantus ? 28 : 16;
     g_standardReceiveWidgets.addressLabel = GuiCreateNoticeLabel(g_standardReceiveWidgets.qrCodeCont, "");
     lv_obj_set_width(g_standardReceiveWidgets.addressLabel, 336);
     lv_obj_align(g_standardReceiveWidgets.addressLabel, LV_ALIGN_TOP_MID, 0, yOffset);
@@ -709,7 +745,7 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
     lv_obj_align(g_standardReceiveWidgets.checkphraseLabel, LV_ALIGN_TOP_MID, 0, yOffset);
     lv_obj_add_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
 
-    yOffset += 16;
+    yOffset += quantus ? 24 : 16;
     g_standardReceiveWidgets.addressCountLabel = GuiCreateIllustrateLabel(g_standardReceiveWidgets.qrCodeCont, "");
     lv_obj_align(g_standardReceiveWidgets.addressCountLabel, LV_ALIGN_TOP_LEFT, 36, yOffset + addrYExtend);
 
@@ -856,6 +892,51 @@ static void GuiCreateSwitchAddressButtons(lv_obj_t *parent)
     UpdateConfirmBtn();
 }
 
+// For Quantus the device font can make the address and/or checkphrase wrap, so the account
+// button is placed below whichever label is visible and the account label is centered inside it.
+// The card height is expanded if the dynamic content would otherwise be clipped.
+static void AlignAddressCountLabelForQuantus(void)
+{
+#ifdef WEB3_VERSION
+    if (g_chainCard != HOME_WALLET_CARD_QUANTUS) {
+        return;
+    }
+    lv_obj_t *anchor = g_standardReceiveWidgets.checkphraseLabel;
+    if (lv_obj_has_flag(anchor, LV_OBJ_FLAG_HIDDEN)) {
+        anchor = g_standardReceiveWidgets.addressLabel;
+    }
+    lv_obj_update_layout(anchor);
+
+    // Place the switch-account button well below the visible address/checkphrase.
+    lv_obj_align_to(g_standardReceiveWidgets.addressButton,
+                    anchor,
+                    LV_ALIGN_OUT_BOTTOM_MID,
+                    0, 16);
+    lv_obj_update_layout(g_standardReceiveWidgets.addressButton);
+
+    // Center the account label inside the button so it sits in the middle of the card.
+    lv_obj_set_style_text_align(g_standardReceiveWidgets.addressCountLabel, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align_to(g_standardReceiveWidgets.addressCountLabel,
+                    g_standardReceiveWidgets.addressButton,
+                    LV_ALIGN_CENTER,
+                    0, 0);
+    lv_obj_update_layout(g_standardReceiveWidgets.addressCountLabel);
+
+    // Grow the card if the dynamic layout overflows the fixed creation height. Use the
+    // lowest bottom edge among the button and the centered label so descenders cannot be
+    // clipped by the card's rounded bottom corner.
+    int32_t buttonBottom = lv_obj_get_y(g_standardReceiveWidgets.addressButton) +
+                           lv_obj_get_height(g_standardReceiveWidgets.addressButton);
+    int32_t labelBottom = lv_obj_get_y(g_standardReceiveWidgets.addressCountLabel) +
+                          lv_obj_get_height(g_standardReceiveWidgets.addressCountLabel);
+    int32_t requiredHeight = LV_MAX(buttonBottom, labelBottom) + 32;
+    int32_t currentHeight = lv_obj_get_height(g_standardReceiveWidgets.qrCodeCont);
+    if (requiredHeight > currentHeight) {
+        lv_obj_set_height(g_standardReceiveWidgets.qrCodeCont, requiredHeight);
+    }
+#endif
+}
+
 static void RenderReceiveAddress(AddressDataItem_t *addressDataItem)
 {
     if (g_standardReceiveWidgets.qrCode == NULL || !lv_obj_is_valid(g_standardReceiveWidgets.qrCode)) {
@@ -900,23 +981,21 @@ static void RenderReceiveAddress(AddressDataItem_t *addressDataItem)
     }
 
     if (g_chainCard == HOME_WALLET_CARD_QUANTUS && addressDataItem->address[0] != '\0') {
-        SimpleResponse_c_char *phrase = quantus_get_checkphrase(addressDataItem->address);
-        if (phrase && phrase->error_code == 0 && phrase->data) {
-            lv_label_set_text(g_standardReceiveWidgets.checkphraseLabel, phrase->data);
-            lv_obj_update_layout(g_standardReceiveWidgets.addressLabel);
-            lv_obj_align_to(g_standardReceiveWidgets.checkphraseLabel,
-                            g_standardReceiveWidgets.addressLabel,
-                            LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
-            lv_obj_clear_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (phrase) {
-            free_simple_response_c_char(phrase);
-        }
+        // Show the address/QR immediately and compute the checkphrase off the UI thread. The
+        // label stays hidden until SIG_QUANTUS_CHECKPHRASE_READY arrives.
+        lv_obj_add_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
+        strcpy_s(g_quantusCheckphraseExpectedAddr, sizeof(g_quantusCheckphraseExpectedAddr),
+                 addressDataItem->address);
+#ifdef COMPILE_SIMULATOR
+        GuiModelSimDelayNextAsync(GuiModelSimDelayFromEnv("QUANTUS_SIM_CHECKPHRASE_DELAY_MS", 0));
+#endif
+        AsyncExecute(QuantusCheckphraseBgFunc, addressDataItem->address, sizeof(addressDataItem->address));
     } else {
         lv_obj_add_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
     }
 #endif
     lv_label_set_text_fmt(g_standardReceiveWidgets.addressCountLabel, "%s-%u", _("account_head"), addressDataItem->index);
+    AlignAddressCountLabelForQuantus();
 }
 
 static void RefreshQrCode(void)
@@ -980,6 +1059,35 @@ void GuiStandardReceiveQuantusAddressReady(void)
         strcpy_s(addressDataItem.address, ADDRESS_MAX_LEN, g_quantusAsyncAddr);
         RenderReceiveAddress(&addressDataItem);
     }
+#endif
+}
+
+void GuiStandardReceiveQuantusCheckphraseReady(void)
+{
+#ifdef WEB3_VERSION
+    printf("Quantus: receive checkphrase ready handler, ok=%d expected='%s' got='%s'\n",
+           g_quantusCheckphraseAsyncOk, g_quantusCheckphraseExpectedAddr, g_quantusCheckphraseAsyncAddr);
+    if (!g_quantusCheckphraseAsyncOk) {
+        printf("ERROR: Quantus async checkphrase generation failed\n");
+        return;
+    }
+    if (strcmp(g_quantusCheckphraseExpectedAddr, g_quantusCheckphraseAsyncAddr) != 0) {
+        // The user switched addresses or left the screen before the job finished.
+        printf("Quantus: dropping stale receive checkphrase (addr mismatch)\n");
+        return;
+    }
+    if (g_standardReceiveWidgets.checkphraseLabel == NULL ||
+            !lv_obj_is_valid(g_standardReceiveWidgets.checkphraseLabel)) {
+        printf("ERROR: Quantus checkphrase label NULL or invalid\n");
+        return;
+    }
+    lv_label_set_text(g_standardReceiveWidgets.checkphraseLabel, g_quantusCheckphraseResult);
+    lv_obj_update_layout(g_standardReceiveWidgets.addressLabel);
+    lv_obj_align_to(g_standardReceiveWidgets.checkphraseLabel,
+                    g_standardReceiveWidgets.addressLabel,
+                    LV_ALIGN_OUT_BOTTOM_MID, 0, 12);
+    lv_obj_clear_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
+    AlignAddressCountLabelForQuantus();
 #endif
 }
 

@@ -1,16 +1,87 @@
 #![allow(clippy::excessive_precision)]
 extern crate alloc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 use cryptoxide::hmac::Hmac;
 use cryptoxide::pbkdf2;
 use cryptoxide::sha2::Sha256;
+use spin::Mutex;
 
 const SALT: &[u8] = b"human-readable-checksum";
 const ITERATIONS: u32 = 40000;
 const CHECKSUM_LEN: usize = 5;
 const KEY_BYTECOUNT: usize = 7; // ceil(5 * 11 / 8)
+const MAX_CACHE_ENTRIES: usize = 64;
 
+struct CacheEntry {
+    address: String,
+    phrase: String,
+}
+
+struct CheckphraseCache {
+    entries: Vec<CacheEntry>,
+}
+
+impl CheckphraseCache {
+    const fn new() -> Self {
+        Self { entries: Vec::new() }
+    }
+
+    /// Look up a cached phrase and move it to the back so it survives eviction
+    /// longer (simple LRU ordering).
+    fn get(&mut self, address: &str) -> Option<String> {
+        for i in 0..self.entries.len() {
+            if self.entries[i].address == address {
+                let entry = self.entries.remove(i);
+                let phrase = entry.phrase.clone();
+                self.entries.push(entry);
+                return Some(phrase);
+            }
+        }
+        None
+    }
+
+    /// Insert a newly computed phrase if it is not already cached. Evict the
+    /// least-recently-used entry when the cache is full.
+    fn put(&mut self, address: &str, phrase: &str) {
+        for entry in &self.entries {
+            if entry.address == address {
+                return;
+            }
+        }
+        if self.entries.len() >= MAX_CACHE_ENTRIES {
+            self.entries.remove(0);
+        }
+        self.entries.push(CacheEntry {
+            address: address.to_string(),
+            phrase: phrase.to_string(),
+        });
+    }
+}
+
+static CACHE: Mutex<CheckphraseCache> = Mutex::new(CheckphraseCache::new());
+
+/// Compute the human-readable checkphrase for an address, serving cached
+/// results when available. The cache is keyed by address, is safe to keep
+/// indefinitely (a firmware update naturally resets it), and never blocks a
+/// caller: on lock contention the phrase is recomputed directly.
 pub fn from_address(ss58_address: &str) -> String {
+    if let Some(mut cache) = CACHE.try_lock() {
+        if let Some(phrase) = cache.get(ss58_address) {
+            return phrase;
+        }
+    }
+
+    let phrase = from_address_uncached(ss58_address);
+
+    if let Some(mut cache) = CACHE.try_lock() {
+        cache.put(ss58_address, &phrase);
+    }
+
+    phrase
+}
+
+fn from_address_uncached(ss58_address: &str) -> String {
     let mut key = [0u8; KEY_BYTECOUNT];
     let mut hmac = Hmac::new(Sha256::new(), ss58_address.as_bytes());
     pbkdf2::pbkdf2(&mut hmac, SALT, ITERATIONS, &mut key);

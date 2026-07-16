@@ -8,6 +8,9 @@
 #include "gui_pending_hintbox.h"
 #include "gui_attention_hintbox.h"
 #include "device_setting.h"
+#ifdef WEB3_VERSION
+#include "gui_quantus.h"
+#endif
 
 int32_t GuiTransactionDetailViewEventProcess(void *self, uint16_t usEvent, void *param, uint16_t usLen)
 {
@@ -71,6 +74,9 @@ int32_t GuiTransactionDetailViewEventProcess(void *self, uint16_t usEvent, void 
 #ifdef WEB3_VERSION
     case SIG_SHOW_TRANSACTION_LOADING_DELAY:
         EthContractCheckRawDataCallback();
+        break;
+    case SIG_QUANTUS_TX_CHECKPHRASE_READY:
+        GuiQuantusTxCheckphraseReady(param);
         break;
 #endif
 #ifndef BTC_ONLY

@@ -1,6 +1,7 @@
 #ifdef WEB3_VERSION
 #include "gui_quantus.h"
 #include "gui_analyze.h"
+#include "gui_api.h"
 #include "keystore.h"
 #include "gui_model.h"
 #include "gui_qr_hintbox.h"
@@ -15,6 +16,7 @@
 #include "account_manager.h"
 #include "gui_chain_components.h"
 #include "stdio.h"
+#include "fetch_sensitive_data_task.h"
 #ifndef COMPILE_SIMULATOR
 #include "cmsis_os.h"
 #include "FreeRTOS.h"
@@ -28,6 +30,19 @@ static URParseMultiResult *g_urMultiResult = NULL;
 static bool g_isMulti = false;
 static void *g_parseResult = NULL;
 static DisplayQuantusTx *g_quantusData = NULL;
+
+// Async checkphrase state for the transaction-signing screen. The screen is rendered with empty
+// checkphrase placeholders, then background jobs fill them in and emit SIG_QUANTUS_TX_CHECKPHRASE_READY.
+#define QUANTUS_TX_CHECKPHRASE_MAX_LABELS 16
+typedef struct {
+    char address[ADDRESS_MAX_LEN];
+    uint32_t labelIndex;
+    uint32_t session;
+} QuantusTxCheckphraseJobCtx_t;
+
+static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_LABELS];
+static uint32_t g_quantusTxCheckphraseLabelCount = 0;
+static uint32_t g_quantusTxCheckphraseSession = 0;
 
 #define CHECK_FREE_PARSE_RESULT(result)                                                             \
     if (result != NULL)                                                                             \
@@ -54,11 +69,13 @@ void *GuiGetQuantusData(void)
     // g_quantusData aliased into the result freed above; clear it so a parse failure below
     // cannot leave the display getters reading freed memory (audit M-4).
     g_quantusData = NULL;
+    g_quantusTxCheckphraseLabelCount = 0;
+    g_quantusTxCheckphraseSession++;
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
-    printf("Quantus: Calling quantus_parse_tx with data pointer: %p\r\n", data);
-    
-    PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx(data);
+    printf("Quantus: Calling quantus_parse_tx_light with data pointer: %p\r\n", data);
+
+    PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx_light(data);
     if (result->error_code != 0) {
         printf("Quantus: Parse failed with error_code: %d\r\n", result->error_code);
         if (result->error_message) {
@@ -95,6 +112,42 @@ PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
     return quantus_check_tx(data, mfp, 4);
 }
 
+// Payload delivered by SIG_QUANTUS_TX_CHECKPHRASE_READY. Carrying the phrase and label index in
+// the signal avoids a race where a later background job overwrites globals before the UI thread
+// processes an earlier signal.
+typedef struct {
+    uint32_t labelIndex;
+    char phrase[96];
+} QuantusTxCheckphraseReady_t;
+
+// Runs on the background task. Computes one checkphrase and emits SIG_QUANTUS_TX_CHECKPHRASE_READY
+// when done. The label index and session are carried in the job context so stale results from a
+// previous transaction are ignored.
+static int32_t QuantusTxCheckphraseBgFunc(const void *inData, uint32_t inDataLen)
+{
+    printf("Quantus: QuantusTxCheckphraseBgFunc started\r\n");
+    (void)inDataLen;
+    const QuantusTxCheckphraseJobCtx_t *ctx = (const QuantusTxCheckphraseJobCtx_t *)inData;
+    SimpleResponse_c_char *phrase = quantus_get_checkphrase((char *)ctx->address);
+    bool ok = (phrase && phrase->error_code == 0 && phrase->data);
+    QuantusTxCheckphraseReady_t ready = {0};
+    ready.labelIndex = ctx->labelIndex;
+    if (ok && phrase->data) {
+        strcpy_s(ready.phrase, sizeof(ready.phrase), phrase->data);
+    }
+    if (phrase) {
+        free_simple_response_c_char(phrase);
+    }
+    // Only emit a signal for the current transaction session; old jobs from a replaced transaction
+    // are silently dropped.
+    if (ctx->session == g_quantusTxCheckphraseSession) {
+        printf("Quantus: emitting SIG_QUANTUS_TX_CHECKPHRASE_READY idx=%u phrase='%s'\r\n", ready.labelIndex, ready.phrase);
+        GuiApiEmitSignal(SIG_QUANTUS_TX_CHECKPHRASE_READY, &ready, sizeof(ready));
+    } else {
+        printf("Quantus: dropping stale checkphrase signal (session mismatch)\r\n");
+    }
+    return SUCCESS_CODE;
+}
 
 void GetQuantusValue(void *indata, void *param, uint32_t maxLen)
 {
@@ -203,6 +256,34 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
 
 // Plain transfers keep the curated card template; every other call type (multisig) renders through
 // GuiQuantusMultisigDetails instead. These gate the two layouts via the template "exist_func".
+
+// Custom container that replaces the transfer-screen checkphrase label. It creates an empty label
+// placeholder and kicks off a background job to compute the real checkphrase.
+void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData)
+{
+    printf("Quantus: GuiQuantusCheckphraseContainer called\r\n");
+    (void)totalData;
+    lv_obj_set_size(parent, 360, LV_SIZE_CONTENT);
+    lv_obj_t *label = GuiCreateIllustrateLabel(parent, "");
+    lv_obj_set_width(label, 360);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(label, lv_color_hex(0x58E6DA), LV_PART_MAIN);
+    lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 8);
+
+    if (g_quantusTxCheckphraseLabelCount >= QUANTUS_TX_CHECKPHRASE_MAX_LABELS ||
+            g_quantusData == NULL || g_quantusData->to == NULL || g_quantusData->to[0] == '\0') {
+        return;
+    }
+    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
+    g_quantusTxCheckphraseLabels[idx] = label;
+
+    QuantusTxCheckphraseJobCtx_t ctx;
+    strcpy_s(ctx.address, sizeof(ctx.address), g_quantusData->to);
+    ctx.labelIndex = idx;
+    ctx.session = g_quantusTxCheckphraseSession;
+    AsyncExecute(QuantusTxCheckphraseBgFunc, &ctx, sizeof(ctx));
+}
+
 bool GetQuantusIsTransfer(void *indata, void *param)
 {
     DisplayQuantusTx *tx = (DisplayQuantusTx *)param;
@@ -234,19 +315,68 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
     if (labels != NULL && values != NULL) {
         uint32_t count = labels->size < values->size ? labels->size : values->size;
         for (uint32_t i = 0; i < count; i++) {
-            if (strcmp(labels->data[i], "Checkphrase") == 0 && lastView != NULL) {
+            if (strcmp(labels->data[i], "Checkphrase") == 0 && lastView != NULL && i > 0) {
                 uint32_t childCount = lv_obj_get_child_cnt(lastView);
                 lv_obj_t *prevChild = lv_obj_get_child(lastView, childCount - 1);
-                lv_obj_t *cpLabel = GuiCreateIllustrateLabel(lastView, values->data[i]);
+                lv_obj_t *cpLabel = GuiCreateIllustrateLabel(lastView, "");
                 lv_obj_set_width(cpLabel, 360);
                 lv_label_set_long_mode(cpLabel, LV_LABEL_LONG_WRAP);
                 lv_obj_set_style_text_color(cpLabel, lv_color_hex(0x58E6DA), LV_PART_MAIN);
-                lv_obj_align_to(cpLabel, prevChild, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 4);
+                lv_obj_align_to(cpLabel, prevChild, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
                 lv_obj_update_layout(cpLabel);
-                lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 4 + lv_obj_get_height(cpLabel));
+                lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 12 + lv_obj_get_height(cpLabel));
+
+                if (g_quantusTxCheckphraseLabelCount < QUANTUS_TX_CHECKPHRASE_MAX_LABELS) {
+                    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
+                    g_quantusTxCheckphraseLabels[idx] = cpLabel;
+                    QuantusTxCheckphraseJobCtx_t ctx;
+                    strcpy_s(ctx.address, sizeof(ctx.address), values->data[i - 1]);
+                    ctx.labelIndex = idx;
+                    ctx.session = g_quantusTxCheckphraseSession;
+                    AsyncExecute(QuantusTxCheckphraseBgFunc, &ctx, sizeof(ctx));
+                }
                 continue;
             }
             lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
+        }
+    }
+}
+
+// Called when a background checkphrase job completes. Updates the matching placeholder label if
+// the label is still alive. The phrase and index travel in the signal parameter so concurrent or
+// back-to-back jobs cannot overwrite each other's data before the UI thread runs.
+void GuiQuantusTxCheckphraseReady(void *param)
+{
+    printf("Quantus: GuiQuantusTxCheckphraseReady called\r\n");
+    if (param == NULL) {
+        return;
+    }
+    const QuantusTxCheckphraseReady_t *ready = (const QuantusTxCheckphraseReady_t *)param;
+    if (ready->labelIndex >= g_quantusTxCheckphraseLabelCount) {
+        printf("Quantus: checkphrase ready label index %u out of range (count=%u)\r\n", ready->labelIndex, g_quantusTxCheckphraseLabelCount);
+        return;
+    }
+    if (ready->phrase[0] == '\0') {
+        printf("ERROR: Quantus async tx checkphrase generation returned empty\n");
+        return;
+    }
+    lv_obj_t *label = g_quantusTxCheckphraseLabels[ready->labelIndex];
+    if (label == NULL || !lv_obj_is_valid(label)) {
+        printf("Quantus: checkphrase label %u is NULL or invalid\r\n", ready->labelIndex);
+        return;
+    }
+    printf("Quantus: setting checkphrase label %u to '%s'\r\n", ready->labelIndex, ready->phrase);
+    lv_label_set_text(label, ready->phrase);
+    lv_obj_update_layout(label);
+
+    // The placeholder was created while the label was empty, so a wrapped checkphrase can
+    // overflow the parent card once the real text arrives. Grow the parent to fit.
+    lv_obj_t *parent = lv_obj_get_parent(label);
+    if (parent != NULL) {
+        int32_t labelBottom = lv_obj_get_y(label) + lv_obj_get_height(label);
+        int32_t parentHeight = lv_obj_get_height(parent);
+        if (labelBottom + 16 > parentHeight) {
+            lv_obj_set_height(parent, labelBottom + 16);
         }
     }
 }
@@ -432,5 +562,6 @@ void FreeQuantusMemory(void)
     CHECK_FREE_UR_RESULT(g_urMultiResult, true);
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     g_quantusData = NULL;
+    g_quantusTxCheckphraseLabelCount = 0;
 }
 #endif

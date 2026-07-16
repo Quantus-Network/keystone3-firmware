@@ -379,6 +379,7 @@ dependencies = [
  "serde_json",
  "sp-core",
  "sp-runtime",
+ "spin",
  "thiserror-core",
  "ur-parse-lib",
  "ur-registry",

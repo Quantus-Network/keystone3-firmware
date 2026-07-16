@@ -46,6 +46,9 @@ int32_t GuiStandardReceiveViewEventProcess(void *self, uint16_t usEvent, void *p
     case SIG_QUANTUS_ADDRESS_READY:
         GuiStandardReceiveQuantusAddressReady();
         break;
+    case SIG_QUANTUS_CHECKPHRASE_READY:
+        GuiStandardReceiveQuantusCheckphraseReady();
+        break;
     case SIG_VERIFY_PASSWORD_PASS: {
         uint16_t *sig = (uint16_t *)param;
         if (sig != NULL && *sig == SIG_QUANTUS_VERIFY_PASSWORD) {

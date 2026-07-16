@@ -1,6 +1,7 @@
 #include "gui_chain.h"
 #include "gui_analyze.h"
 #include "gui_chain_components.h"
+#include "gui_quantus.h"
 
 static GetLabelDataFunc GuiAdaTextFuncGet(char *type);
 static GetLabelDataLenFunc GuiAdaTextLenFuncGet(char *type);
@@ -119,6 +120,8 @@ GetCustomContainerFunc GetOtherChainCustomFunc(char *funcName)
         return GuiZcashOverview;
     } else if (!strcmp(funcName, "GuiQuantusMultisigDetails")) {
         return GuiQuantusMultisigDetails;
+    } else if (!strcmp(funcName, "GuiQuantusCheckphraseContainer")) {
+        return GuiQuantusCheckphraseContainer;
     }
 
     return NULL;

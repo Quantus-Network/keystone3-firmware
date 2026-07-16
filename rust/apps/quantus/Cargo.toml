@@ -27,6 +27,7 @@ parity-scale-codec-derive = { workspace = true }
 ur-registry = { workspace = true }
 ur-parse-lib = { workspace = true }
 minicbor = { workspace = true }
+spin = { version = "0.9", default-features = false, features = ["spin_mutex"] }
 
 [features]
 # Opt-in ONLY for local debugging: logs derived secrets (mnemonic/passphrase) via

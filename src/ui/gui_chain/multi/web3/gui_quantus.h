@@ -19,6 +19,8 @@ void GuiQuantusOverview(lv_obj_t *parent, void *totalData);
 bool GetQuantusIsTransfer(void *indata, void *param);
 bool GetQuantusIsMultisig(void *indata, void *param);
 void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData);
+void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData);
+void GuiQuantusTxCheckphraseReady(void *param);
 void FreeQuantusMemory(void);
 
 // Run `fn(ctx)` on a dedicated, PSRAM-backed stack large enough for ML-DSA-87 keygen/signing,
