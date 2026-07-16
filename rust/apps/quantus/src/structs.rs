@@ -6,6 +6,7 @@ impl_public_struct!(ParsedQuantusTx {
     tx_type: String,
     is_multisig: bool,
     to: String,
+    to_checkphrase: String,
     amount: String,
     nonce: String,
     tip: String,

@@ -28,6 +28,7 @@
 #endif
 
 extern SimpleResponse_c_char *quantus_get_address(char *mnemonic, char *passphrase, char *path);
+extern SimpleResponse_c_char *quantus_get_checkphrase(char *address);
 
 #ifdef WEB3_VERSION
 #include "gui_quantus.h"
@@ -188,6 +189,7 @@ typedef struct {
     lv_obj_t *qrCodeCont;
     lv_obj_t *qrCode;
     lv_obj_t *addressLabel;
+    lv_obj_t *checkphraseLabel;
     lv_obj_t *addressCountLabel;
     lv_obj_t *moreCont;
     lv_obj_t *addressButton;
@@ -669,6 +671,9 @@ static uint16_t GetAddrYExtend(void)
     if (g_chainCard == HOME_WALLET_CARD_SUI || g_chainCard == HOME_WALLET_CARD_APT || g_chainCard == HOME_WALLET_CARD_IOTA) {
         return 30;
     }
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+        return 30;
+    }
 #endif
     return 0;
 }
@@ -697,6 +702,12 @@ static void GuiCreateQrCodeWidget(lv_obj_t *parent)
     lv_obj_set_width(g_standardReceiveWidgets.addressLabel, 336);
     lv_obj_align(g_standardReceiveWidgets.addressLabel, LV_ALIGN_TOP_MID, 0, yOffset);
     yOffset += 60;
+
+    g_standardReceiveWidgets.checkphraseLabel = GuiCreateIllustrateLabel(g_standardReceiveWidgets.qrCodeCont, "");
+    lv_obj_set_width(g_standardReceiveWidgets.checkphraseLabel, 336);
+    lv_obj_set_style_text_color(g_standardReceiveWidgets.checkphraseLabel, lv_color_hex(0x58E6DA), LV_PART_MAIN);
+    lv_obj_align(g_standardReceiveWidgets.checkphraseLabel, LV_ALIGN_TOP_MID, 0, yOffset);
+    lv_obj_add_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
 
     yOffset += 16;
     g_standardReceiveWidgets.addressCountLabel = GuiCreateIllustrateLabel(g_standardReceiveWidgets.qrCodeCont, "");
@@ -886,6 +897,23 @@ static void RenderReceiveAddress(AddressDataItem_t *addressDataItem)
         lv_label_set_text(g_standardReceiveWidgets.addressLabel, address);
     } else {
         lv_label_set_text(g_standardReceiveWidgets.addressLabel, addressDataItem->address);
+    }
+
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS && addressDataItem->address[0] != '\0') {
+        SimpleResponse_c_char *phrase = quantus_get_checkphrase(addressDataItem->address);
+        if (phrase && phrase->error_code == 0 && phrase->data) {
+            lv_label_set_text(g_standardReceiveWidgets.checkphraseLabel, phrase->data);
+            lv_obj_update_layout(g_standardReceiveWidgets.addressLabel);
+            lv_obj_align_to(g_standardReceiveWidgets.checkphraseLabel,
+                            g_standardReceiveWidgets.addressLabel,
+                            LV_ALIGN_OUT_BOTTOM_MID, 0, 6);
+            lv_obj_clear_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (phrase) {
+            free_simple_response_c_char(phrase);
+        }
+    } else {
+        lv_obj_add_flag(g_standardReceiveWidgets.checkphraseLabel, LV_OBJ_FLAG_HIDDEN);
     }
 #endif
     lv_label_set_text_fmt(g_standardReceiveWidgets.addressCountLabel, "%s-%u", _("account_head"), addressDataItem->index);

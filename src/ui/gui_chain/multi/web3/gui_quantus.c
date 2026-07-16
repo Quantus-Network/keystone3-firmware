@@ -123,6 +123,15 @@ void GetQuantusToAddress(void *indata, void *param, uint32_t maxLen)
     }
 }
 
+void GetQuantusToCheckphrase(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->to_checkphrase) {
+         strcpy_s((char *)indata, maxLen, g_quantusData->to_checkphrase);
+    } else {
+         strcpy_s((char *)indata, maxLen, "");
+    }
+}
+
 void GetQuantusEra(void *indata, void *param, uint32_t maxLen)
 {
     if (g_quantusData && g_quantusData->era) {
@@ -176,6 +185,8 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
         return GetQuantusTip;
     } else if (!strcmp(type, "GetQuantusToAddress")) {
         return GetQuantusToAddress;
+    } else if (!strcmp(type, "GetQuantusToCheckphrase")) {
+        return GetQuantusToCheckphrase;
     } else if (!strcmp(type, "GetQuantusEra")) {
         return GetQuantusEra;
     } else if (!strcmp(type, "GetQuantusNonce")) {

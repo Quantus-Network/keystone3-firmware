@@ -200,6 +200,15 @@ pub unsafe extern "C" fn quantus_get_address(
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn quantus_get_checkphrase(
+    address: PtrString,
+) -> *mut SimpleResponse<c_char> {
+    let address = recover_c_char(address);
+    let phrase = app_quantus::checkphrase::from_address(&address);
+    SimpleResponse::success(convert_c_char(phrase) as *mut c_char).simple_c_ptr()
+}
+
 make_free_method!(TransactionParseResult<DisplayQuantusTx>);
 
 #[cfg(test)]

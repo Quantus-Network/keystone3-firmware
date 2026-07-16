@@ -15,6 +15,7 @@ pub struct DisplayQuantusTx {
     pub tx_type: PtrString,
     pub is_multisig: bool,
     pub to: PtrString,
+    pub to_checkphrase: PtrString,
     pub amount: PtrString,
     pub nonce: PtrString,
     pub tip: PtrString,
@@ -47,6 +48,7 @@ impl From<&ParsedQuantusTx> for DisplayQuantusTx {
             tx_type: convert_c_char(tx.get_tx_type()),
             is_multisig: tx.get_is_multisig(),
             to: convert_c_char(tx.get_to()),
+            to_checkphrase: convert_c_char(tx.get_to_checkphrase()),
             amount: convert_c_char(tx.get_amount()),
             nonce: convert_c_char(tx.get_nonce()),
             tip: convert_c_char(tx.get_tip()),
@@ -64,6 +66,7 @@ impl Free for DisplayQuantusTx {
     unsafe fn free(&self) {
         free_str_ptr!(self.tx_type);
         free_str_ptr!(self.to);
+        free_str_ptr!(self.to_checkphrase);
         free_str_ptr!(self.amount);
         free_str_ptr!(self.nonce);
         free_str_ptr!(self.tip);

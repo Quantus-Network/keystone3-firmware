@@ -33,6 +33,7 @@ pub mod errors;
 pub mod structs;
 pub mod parser;
 pub mod ss58;
+pub mod checkphrase;
 
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 
@@ -117,11 +118,16 @@ fn push_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, val
 
 // Flatten a call into ordered (label, value) rows for the per-type detail view. Recurses into the
 // inner call of a multisig proposal so the user sees exactly what is being proposed (no blind signing).
+fn push_address_row(labels: &mut Vec<String>, values: &mut Vec<String>, label: &str, address: &str) {
+    push_row(labels, values, label, address.to_string());
+    push_row(labels, values, "Checkphrase", checkphrase::from_address(address));
+}
+
 fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String>) {
     match tx {
         QuantusTx::Transfer { to, amount, is_reversible, reversible_timeframe } => {
             push_row(labels, values, "Amount", alloc::format!("{} QUAN", format_amount(*amount)));
-            push_row(labels, values, "To", to.clone());
+            push_address_row(labels, values, "To", to);
             if *is_reversible {
                 push_row(labels, values, "Reversible", "Yes".to_string());
                 if let Some(ms) = reversible_timeframe {
@@ -133,21 +139,21 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
             push_row(labels, values, "Threshold", alloc::format!("{} of {}", threshold, signers.len()));
             push_row(labels, values, "Nonce", nonce.to_string());
             for (i, signer) in signers.iter().enumerate() {
-                push_row(labels, values, &alloc::format!("Signer {}", i + 1), signer.clone());
+                push_address_row(labels, values, &alloc::format!("Signer {}", i + 1), signer);
             }
         }
         QuantusTx::MultisigPropose { multisig, expiry, inner } => {
-            push_row(labels, values, "Multisig", multisig.clone());
+            push_address_row(labels, values, "Multisig", multisig);
             push_row(labels, values, "Expiry Block", expiry.to_string());
             push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
             append_rows(inner, labels, values);
         }
         QuantusTx::MultisigApprove { multisig, proposal_id } => {
-            push_row(labels, values, "Multisig", multisig.clone());
+            push_address_row(labels, values, "Multisig", multisig);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
         }
         QuantusTx::MultisigExecute { multisig, proposal_id } => {
-            push_row(labels, values, "Multisig", multisig.clone());
+            push_address_row(labels, values, "Multisig", multisig);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
         }
     }
@@ -167,10 +173,16 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
             Some(ms) => format_duration(*ms),
             None => String::new(),
         };
+        let to_checkphrase = if !to.is_empty() {
+            checkphrase::from_address(to)
+        } else {
+            String::new()
+        };
         return ParsedQuantusTx::new(
             tx_type,
             false,
             to.clone(),
+            to_checkphrase,
             format_amount(*amount),
             nonce,
             tip,
@@ -195,6 +207,7 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload) -> ParsedQuantusTx {
     ParsedQuantusTx::new(
         tx_type,
         true,
+        String::new(),
         String::new(),
         String::new(),
         nonce,
