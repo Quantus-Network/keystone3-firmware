@@ -149,7 +149,7 @@ default = ["simulator-multi-coins"]
 
 [dev-dependencies]
 keystore = { path = "../keystore" }
-qp-rusty-crystals-dilithium = { version = "2.4.0", default-features = false }
+qp-rusty-crystals-dilithium = { version = "2.5.0", default-features = false }
 
 [build-dependencies]
 cbindgen = "0.27.0"
