@@ -234,6 +234,18 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
     if (labels != NULL && values != NULL) {
         uint32_t count = labels->size < values->size ? labels->size : values->size;
         for (uint32_t i = 0; i < count; i++) {
+            if (strcmp(labels->data[i], "Checkphrase") == 0 && lastView != NULL) {
+                uint32_t childCount = lv_obj_get_child_cnt(lastView);
+                lv_obj_t *prevChild = lv_obj_get_child(lastView, childCount - 1);
+                lv_obj_t *cpLabel = GuiCreateIllustrateLabel(lastView, values->data[i]);
+                lv_obj_set_width(cpLabel, 360);
+                lv_label_set_long_mode(cpLabel, LV_LABEL_LONG_WRAP);
+                lv_obj_set_style_text_color(cpLabel, lv_color_hex(0x58E6DA), LV_PART_MAIN);
+                lv_obj_align_to(cpLabel, prevChild, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 4);
+                lv_obj_update_layout(cpLabel);
+                lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 4 + lv_obj_get_height(cpLabel));
+                continue;
+            }
             lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
         }
     }
