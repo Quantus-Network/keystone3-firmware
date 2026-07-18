@@ -76,6 +76,12 @@ void *GuiGetQuantusData(void)
     printf("Quantus: Calling quantus_parse_tx_light with data pointer: %p\r\n", data);
 
     PtrT_TransactionParseResult_DisplayQuantusTx result = quantus_parse_tx_light(data);
+    if (result == NULL) {
+        // Defensive: the FFI contract never returns NULL, but guard so an allocation failure
+        // surfaces as "no data" instead of a NULL dereference below (audit L-4).
+        printf("Quantus: quantus_parse_tx_light returned NULL\r\n");
+        return NULL;
+    }
     if (result->error_code != 0) {
         printf("Quantus: Parse failed with error_code: %d\r\n", result->error_code);
         if (result->error_message) {
@@ -524,6 +530,9 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
 
         char *mnemonic = QuantusReconstructMnemonic();
         if (mnemonic == NULL) {
+            // Wipe the cached PIN/passphrase even on this early-out, so a failed signing
+            // attempt never leaves secrets resident in the cache (audit L-1).
+            ClearSecretCache();
             break;
         }
 

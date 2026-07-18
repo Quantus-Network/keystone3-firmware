@@ -316,10 +316,8 @@ int32_t SimulatorLoadAccountSecret(uint8_t accountIndex, AccountSecret_t *accoun
     }
 
     cJSON *passwordJson = cJSON_GetObjectItem(rootJson, "password");
-    const char *storedPassword = passwordJson ? (passwordJson->valuestring ? passwordJson->valuestring : "") : "";
-    const char *providedPassword = password ? password : "";
-    printf("SimulatorLoadAccountSecret: stored_pwd='%s', provided_pwd='%s'\n", storedPassword, providedPassword);
-    
+    // Note: do not print stored/provided passwords here — even in the simulator this leaks a
+    // real test password into terminal scrollback / CI logs (audit L-5).
     if (passwordJson == NULL || passwordJson->valuestring == NULL || password == NULL || strcmp(passwordJson->valuestring, password) != 0) {
         printf("SimulatorLoadAccountSecret: Password mismatch or missing\n");
         cJSON_Delete(rootJson);
@@ -343,10 +341,8 @@ int32_t SimulatorLoadAccountSecret(uint8_t accountIndex, AccountSecret_t *accoun
         printf("SimulatorLoadAccountSecret: Read entropyLen from param[0]: %u\n", accountSecret->entropyLen);
     }
     
-    char *jsonStr = cJSON_Print(rootJson);
-    printf("SimulatorLoadAccountSecret: JSON keys: %s\n", jsonStr ? jsonStr : "NULL");
-    if (jsonStr) free(jsonStr);
-
+    // Note: do not dump the parsed secret JSON (entropy/seed/slip39-ems/password) to stdout,
+    // even in the simulator — it lands a real test seed in logs (audit L-5).
     cJSON_Delete(rootJson);
 
     return ret;
