@@ -369,9 +369,9 @@ dependencies = [
  "parity-scale-codec",
  "parity-scale-codec-derive",
  "qp-dilithium-crypto",
- "qp-poseidon-core 2.1.0",
- "qp-rusty-crystals-dilithium",
- "qp-rusty-crystals-hdwallet",
+ "qp-poseidon-core 3.0.2",
+ "qp-rusty-crystals-dilithium 3.0.0",
+ "qp-rusty-crystals-hdwallet 3.0.0",
  "quantus_ur",
  "rust_tools",
  "scale-info",
@@ -1039,9 +1039,9 @@ version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbd31c98227229239363921e60fcf5e558e43ec69094d46fc4996f08d1d5bc"
 dependencies = [
- "bitcoin_hashes 0.12.0",
+ "bitcoin_hashes 0.14.0",
  "rand",
- "rand_core 0.4.2",
+ "rand_core 0.6.4",
  "serde",
  "unicode-normalization",
 ]
@@ -3971,7 +3971,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4741,8 +4741,8 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "qp-poseidon-core 2.1.0",
- "qp-rusty-crystals-dilithium",
- "qp-rusty-crystals-hdwallet",
+ "qp-rusty-crystals-dilithium 2.5.0",
+ "qp-rusty-crystals-hdwallet 2.4.0",
  "scale-info",
  "sp-core",
  "sp-runtime",
@@ -4757,14 +4757,24 @@ checksum = "78172860cd960773c72e97fba07ead9e5a1c13086c5746283744933e2e4a577b"
 
 [[package]]
 name = "qp-poseidon-core"
-version = "3.0.0"
+version = "3.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3fd767cf8aaecf9369fab79255ff9e0ea439cdfef941976edbfb8ba70435b63"
+checksum = "55e32db7b3a5d70086f82f198ecfc021f17cb7ec70a416512dba3488f4a116c1"
 
 [[package]]
 name = "qp-rusty-crystals-dilithium"
 version = "2.5.0"
-source = "git+https://github.com/Quantus-Network/qp-rusty-crystals.git?rev=6a66210d3b394fc5d57cfe78270cbe49492affc3#6a66210d3b394fc5d57cfe78270cbe49492affc3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6c16ed4031406f6d8ff14a4822a35f766b62617324c75931db7df8c3631a701"
+dependencies = [
+ "zeroize",
+]
+
+[[package]]
+name = "qp-rusty-crystals-dilithium"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32c874b435ae164dc08bca95ac39a15b9b01999399b007263ace586b1f1ecaf5"
 dependencies = [
  "zeroize",
 ]
@@ -4772,15 +4782,36 @@ dependencies = [
 [[package]]
 name = "qp-rusty-crystals-hdwallet"
 version = "2.4.0"
-source = "git+https://github.com/Quantus-Network/qp-rusty-crystals.git?rev=6a66210d3b394fc5d57cfe78270cbe49492affc3#6a66210d3b394fc5d57cfe78270cbe49492affc3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2e068be8021f2bebbabeab77ee9107a359d6e537397323ae92aae8178922fab"
 dependencies = [
  "bip39",
  "getrandom 0.2.17",
  "hex",
  "hex-literal",
  "hmac 0.12.1",
- "qp-poseidon-core 3.0.0",
- "qp-rusty-crystals-dilithium",
+ "qp-poseidon-core 2.1.0",
+ "qp-rusty-crystals-dilithium 2.5.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
+name = "qp-rusty-crystals-hdwallet"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "01df4fc7a56800acedf394f8839b9ef99455ba2f7c4dadf7349947cf39a2c53e"
+dependencies = [
+ "bip39",
+ "getrandom 0.2.17",
+ "hex",
+ "hex-literal",
+ "hmac 0.12.1",
+ "qp-poseidon-core 3.0.2",
+ "qp-rusty-crystals-dilithium 3.0.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -5205,7 +5236,7 @@ dependencies = [
  "keystore",
  "minicbor",
  "no_std_io2",
- "qp-rusty-crystals-dilithium",
+ "qp-rusty-crystals-dilithium 3.0.0",
  "quantus_ur",
  "rand_core 0.6.4",
  "rsa",
@@ -5498,7 +5529,7 @@ version = "0.29.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9465315bc9d4566e1724f0fffcbcc446268cb522e60f9a27bcded6b19c108113"
 dependencies = [
- "bitcoin_hashes 0.12.0",
+ "bitcoin_hashes 0.14.0",
  "secp256k1-sys 0.10.1",
 ]
 
@@ -5828,7 +5859,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7128,7 +7159,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

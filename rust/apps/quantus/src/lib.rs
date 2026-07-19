@@ -36,23 +36,11 @@ pub mod ss58;
 pub mod checkphrase;
 
 fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
-
-    #[cfg(all(not(test), feature = "debug_secrets"))]
-    rust_tools::debug!(alloc::format!("get_keys mnemonic: {}", mnemonic));
-    #[cfg(all(not(test), feature = "debug_secrets"))]
-    rust_tools::debug!(alloc::format!("get_keys passphrase: {}", passphrase));
-    #[cfg(all(not(test), feature = "debug_secrets"))]
-    rust_tools::debug!(alloc::format!("get_keys path: {}", path));
-
     qp_rusty_crystals_hdwallet::derive_key_from_mnemonic(mnemonic, Some(passphrase), path)
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))
 }
 
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
-
-    #[cfg(all(not(test), feature = "debug_secrets"))]
-    debug!(alloc::format!("get_address mnemonic: {}, passphrase: {}, path: {}", mnemonic, passphrase, path));
-
     let keys = get_keys(mnemonic, passphrase, path)?;
         
     let pub_key_bytes = keys.public.to_bytes();

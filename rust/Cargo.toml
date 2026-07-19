@@ -125,8 +125,3 @@ zeroize = { version = "1.8.2", default-features = false }
 parity-scale-codec = { version = "3.6.9", default-features = false }
 parity-scale-codec-derive = { version = "3.6.9", default-features = false }
 # third party dependencies end
-
-# Pin the stack-streaming ML-DSA build of qp-rusty-crystals to an exact commit on
-[patch.crates-io]
-qp-rusty-crystals-dilithium = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", rev = "6a66210d3b394fc5d57cfe78270cbe49492affc3" }
-qp-rusty-crystals-hdwallet = { git = "https://github.com/Quantus-Network/qp-rusty-crystals.git", rev = "6a66210d3b394fc5d57cfe78270cbe49492affc3" }
