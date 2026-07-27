@@ -33,7 +33,13 @@ static DisplayQuantusTx *g_quantusData = NULL;
 
 // Async checkphrase state for the transaction-signing screen. The screen is rendered with empty
 // checkphrase placeholders, then background jobs fill them in and emit SIG_QUANTUS_TX_CHECKPHRASE_READY.
-#define QUANTUS_TX_CHECKPHRASE_MAX_LABELS 16
+// The parser caps multisig signers at 48 (audit M-1), so 50 slots cover a max-size create
+// (48 signers) plus the multisig/recipient addresses of the other call types.
+#define QUANTUS_TX_CHECKPHRASE_MAX_LABELS 50
+// At most this many checkphrase jobs are queued on the sensitive-data task at once; each
+// completed job dispatches the next pending one (audit M-1). Too many simultaneous jobs
+// would exhaust the device.
+#define QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT 2
 typedef struct {
     char address[ADDRESS_MAX_LEN];
     uint32_t labelIndex;
@@ -41,7 +47,10 @@ typedef struct {
 } QuantusTxCheckphraseJobCtx_t;
 
 static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_LABELS];
+static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][ADDRESS_MAX_LEN];
 static uint32_t g_quantusTxCheckphraseLabelCount = 0;
+static uint32_t g_quantusTxCheckphraseNextDispatch = 0;
+static uint32_t g_quantusTxCheckphraseJobsInFlight = 0;
 static uint32_t g_quantusTxCheckphraseSession = 0;
 
 #define CHECK_FREE_PARSE_RESULT(result)                                                             \
@@ -70,6 +79,8 @@ void *GuiGetQuantusData(void)
     // cannot leave the display getters reading freed memory (audit M-4).
     g_quantusData = NULL;
     g_quantusTxCheckphraseLabelCount = 0;
+    g_quantusTxCheckphraseNextDispatch = 0;
+    g_quantusTxCheckphraseJobsInFlight = 0;
     g_quantusTxCheckphraseSession++;
     void *data = g_isMulti ? g_urMultiResult->data : g_urResult->data;
     
@@ -120,11 +131,49 @@ PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void)
 
 // Payload delivered by SIG_QUANTUS_TX_CHECKPHRASE_READY. Carrying the phrase and label index in
 // the signal avoids a race where a later background job overwrites globals before the UI thread
-// processes an earlier signal.
+// processes an earlier signal. The session rebinds the result to the transaction that requested
+// it: a job can pass the emit-time session check and still be handled after a newer transaction
+// reused the same label slot, so the consumer revalidates (audit H-4).
 typedef struct {
     uint32_t labelIndex;
+    uint32_t session;
     char phrase[96];
 } QuantusTxCheckphraseReady_t;
+
+static int32_t QuantusTxCheckphraseBgFunc(const void *inData, uint32_t inDataLen);
+
+// Register a placeholder label and the address whose checkphrase will fill it.
+static void QuantusTxCheckphraseRegister(lv_obj_t *label, const char *address)
+{
+    if (g_quantusTxCheckphraseLabelCount >= QUANTUS_TX_CHECKPHRASE_MAX_LABELS) {
+        return;
+    }
+    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
+    g_quantusTxCheckphraseLabels[idx] = label;
+    strcpy_s(g_quantusTxCheckphraseAddrs[idx], sizeof(g_quantusTxCheckphraseAddrs[idx]), address);
+}
+
+// Queue pending checkphrase jobs, at most QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT at a time.
+// Called by the UI thread after registering labels and by the background task when a job
+// completes, which sequences the remaining jobs one after another (audit M-1).
+static void QuantusTxCheckphraseDispatchNext(void)
+{
+    while (g_quantusTxCheckphraseJobsInFlight < QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT &&
+            g_quantusTxCheckphraseNextDispatch < g_quantusTxCheckphraseLabelCount) {
+        uint32_t idx = g_quantusTxCheckphraseNextDispatch;
+        QuantusTxCheckphraseJobCtx_t ctx;
+        strcpy_s(ctx.address, sizeof(ctx.address), g_quantusTxCheckphraseAddrs[idx]);
+        ctx.labelIndex = idx;
+        ctx.session = g_quantusTxCheckphraseSession;
+        g_quantusTxCheckphraseJobsInFlight++;
+        g_quantusTxCheckphraseNextDispatch++;
+        if (AsyncExecute(QuantusTxCheckphraseBgFunc, &ctx, sizeof(ctx)) != SUCCESS_CODE) {
+            // Queue full: the slot stays empty and the job is counted as done (audit M-3).
+            printf("ERROR: Quantus checkphrase job dispatch failed (idx=%u)\r\n", idx);
+            g_quantusTxCheckphraseJobsInFlight--;
+        }
+    }
+}
 
 // Runs on the background task. Computes one checkphrase and emits SIG_QUANTUS_TX_CHECKPHRASE_READY
 // when done. The label index and session are carried in the job context so stale results from a
@@ -138,6 +187,7 @@ static int32_t QuantusTxCheckphraseBgFunc(const void *inData, uint32_t inDataLen
     bool ok = (phrase && phrase->error_code == 0 && phrase->data);
     QuantusTxCheckphraseReady_t ready = {0};
     ready.labelIndex = ctx->labelIndex;
+    ready.session = ctx->session;
     if (ok && phrase->data) {
         strcpy_s(ready.phrase, sizeof(ready.phrase), phrase->data);
     }
@@ -149,7 +199,12 @@ static int32_t QuantusTxCheckphraseBgFunc(const void *inData, uint32_t inDataLen
     if (ctx->session == g_quantusTxCheckphraseSession) {
         printf("Quantus: emitting SIG_QUANTUS_TX_CHECKPHRASE_READY idx=%u phrase='%s'\r\n", ready.labelIndex, ready.phrase);
         GuiApiEmitSignal(SIG_QUANTUS_TX_CHECKPHRASE_READY, &ready, sizeof(ready));
+        if (g_quantusTxCheckphraseJobsInFlight > 0) {
+            g_quantusTxCheckphraseJobsInFlight--;
+        }
+        QuantusTxCheckphraseDispatchNext();
     } else {
+        // Stale job: the counters were reset with the new session, so leave them alone.
         printf("Quantus: dropping stale checkphrase signal (session mismatch)\r\n");
     }
     return SUCCESS_CODE;
@@ -276,18 +331,11 @@ void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData)
     lv_obj_set_style_text_color(label, lv_color_hex(0x58E6DA), LV_PART_MAIN);
     lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 8);
 
-    if (g_quantusTxCheckphraseLabelCount >= QUANTUS_TX_CHECKPHRASE_MAX_LABELS ||
-            g_quantusData == NULL || g_quantusData->to == NULL || g_quantusData->to[0] == '\0') {
+    if (g_quantusData == NULL || g_quantusData->to == NULL || g_quantusData->to[0] == '\0') {
         return;
     }
-    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
-    g_quantusTxCheckphraseLabels[idx] = label;
-
-    QuantusTxCheckphraseJobCtx_t ctx;
-    strcpy_s(ctx.address, sizeof(ctx.address), g_quantusData->to);
-    ctx.labelIndex = idx;
-    ctx.session = g_quantusTxCheckphraseSession;
-    AsyncExecute(QuantusTxCheckphraseBgFunc, &ctx, sizeof(ctx));
+    QuantusTxCheckphraseRegister(label, g_quantusData->to);
+    QuantusTxCheckphraseDispatchNext();
 }
 
 bool GetQuantusIsTransfer(void *indata, void *param)
@@ -332,15 +380,8 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
                 lv_obj_update_layout(cpLabel);
                 lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 12 + lv_obj_get_height(cpLabel));
 
-                if (g_quantusTxCheckphraseLabelCount < QUANTUS_TX_CHECKPHRASE_MAX_LABELS) {
-                    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
-                    g_quantusTxCheckphraseLabels[idx] = cpLabel;
-                    QuantusTxCheckphraseJobCtx_t ctx;
-                    strcpy_s(ctx.address, sizeof(ctx.address), values->data[i - 1]);
-                    ctx.labelIndex = idx;
-                    ctx.session = g_quantusTxCheckphraseSession;
-                    AsyncExecute(QuantusTxCheckphraseBgFunc, &ctx, sizeof(ctx));
-                }
+                QuantusTxCheckphraseRegister(cpLabel, values->data[i - 1]);
+                QuantusTxCheckphraseDispatchNext();
                 continue;
             }
             lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
@@ -358,6 +399,13 @@ void GuiQuantusTxCheckphraseReady(void *param)
         return;
     }
     const QuantusTxCheckphraseReady_t *ready = (const QuantusTxCheckphraseReady_t *)param;
+    if (ready->session != g_quantusTxCheckphraseSession) {
+        // The emit-time session check passed but a newer transaction has since taken over
+        // the label slots; never render a stale phrase into the current review (audit H-4).
+        printf("Quantus: dropping stale checkphrase ready (session %u != %u)\r\n",
+               ready->session, g_quantusTxCheckphraseSession);
+        return;
+    }
     if (ready->labelIndex >= g_quantusTxCheckphraseLabelCount) {
         printf("Quantus: checkphrase ready label index %u out of range (count=%u)\r\n", ready->labelIndex, g_quantusTxCheckphraseLabelCount);
         return;
@@ -392,6 +440,8 @@ void GuiQuantusTxCheckphraseReady(void *param)
 // framing margin. Sized off the thumbv7em stack-frame measurement (see qp-rusty-crystals
 // stack-check.sh); trim once the on-device high-water mark below confirms real usage.
 #define QUANTUS_CRYPTO_STACK_BYTES   (1024 * 192)
+// Bytes left untouched below the live frame when wiping the stack after a crypto job.
+#define QUANTUS_CRYPTO_STACK_WIPE_MARGIN 512
 
 typedef struct {
     QuantusCryptoFunc_t fn;
@@ -401,6 +451,7 @@ typedef struct {
 
 static osThreadId_t g_quantusCryptoTask = NULL;
 static osMessageQueueId_t g_quantusCryptoQueue = NULL;
+static uint8_t *g_quantusCryptoStack = NULL;
 
 static void QuantusCryptoThread(void *arg)
 {
@@ -417,6 +468,17 @@ static void QuantusCryptoThread(void *arg)
         printf("Quantus crypto stack high-water: %lu/%d bytes used\r\n",
                (unsigned long)(QUANTUS_CRYPTO_STACK_BYTES - freeWords * sizeof(StackType_t)),
                QUANTUS_CRYPTO_STACK_BYTES);
+        // Wipe the deepest-used stack region so ML-DSA key material does not stay resident
+        // in PSRAM after the job returns (audit H-3). The stack grows down: the stale bytes
+        // lie between the high-water mark and the live frame; a margin below the live frame
+        // (whose data is still needed) is left untouched.
+        if (g_quantusCryptoStack != NULL) {
+            uint8_t *wipeStart = g_quantusCryptoStack + freeWords * sizeof(StackType_t);
+            uint8_t *wipeEnd = (uint8_t *)((uintptr_t)&job - QUANTUS_CRYPTO_STACK_WIPE_MARGIN);
+            if (wipeEnd > wipeStart) {
+                memset_s(wipeStart, wipeEnd - wipeStart, 0, wipeEnd - wipeStart);
+            }
+        }
         if (job.done) {
             osSemaphoreRelease(job.done);
         }
@@ -430,12 +492,12 @@ static void QuantusCryptoTaskEnsure(void)
     }
     g_quantusCryptoQueue = osMessageQueueNew(2, sizeof(QuantusCryptoJob_t), NULL);
     StaticTask_t *tcb = (StaticTask_t *)SRAM_MALLOC(sizeof(StaticTask_t));
-    void *stack = ExtMalloc(QUANTUS_CRYPTO_STACK_BYTES);
+    g_quantusCryptoStack = ExtMalloc(QUANTUS_CRYPTO_STACK_BYTES);
     const osThreadAttr_t attr = {
         .name = "QuantusCrypto",
         .cb_mem = tcb,
         .cb_size = sizeof(StaticTask_t),
-        .stack_mem = stack,
+        .stack_mem = g_quantusCryptoStack,
         .stack_size = QUANTUS_CRYPTO_STACK_BYTES,
         .priority = osPriorityBelowNormal,
     };
@@ -482,11 +544,20 @@ char *QuantusReconstructMnemonic(void)
         printf("Quantus: only BIP39 mnemonics are supported\r\n");
         return NULL;
     }
-    char *password = SecretCacheGetPassword();
+    // Copy the cached password before use: the global pointer can be freed by
+    // ClearSecretCache() on another task while GetAccountEntropy is still reading it
+    // (audit M-2). The local copy is zeroized on every exit path.
+    char password[PASSWORD_MAX_LEN] = {0};
+    const char *cachedPassword = SecretCacheGetPassword();
+    if (cachedPassword != NULL) {
+        strcpy_s(password, sizeof(password), cachedPassword);
+    }
     uint8_t entropy[ENTROPY_MAX_LEN];
     uint8_t entropyLen = 0;
     char *mnemonic = NULL;
-    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen, password);
+    int32_t ret = GetAccountEntropy(GetCurrentAccountIndex(), entropy, &entropyLen,
+                                    cachedPassword != NULL ? password : NULL);
+    memset_s(password, sizeof(password), 0, sizeof(password));
     if (ret != SUCCESS_CODE || entropyLen == 0) {
         printf("Quantus: GetAccountEntropy failed ret=%d entropyLen=%u\r\n", ret, entropyLen);
         memset_s(entropy, sizeof(entropy), 0, sizeof(entropy));
@@ -572,5 +643,10 @@ void FreeQuantusMemory(void)
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     g_quantusData = NULL;
     g_quantusTxCheckphraseLabelCount = 0;
+    g_quantusTxCheckphraseNextDispatch = 0;
+    g_quantusTxCheckphraseJobsInFlight = 0;
+    // Invalidate in-flight checkphrase jobs so a stale result is never rendered into the
+    // next screen that reuses these label slots.
+    g_quantusTxCheckphraseSession++;
 }
 #endif

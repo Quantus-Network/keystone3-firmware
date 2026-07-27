@@ -62,7 +62,15 @@ int32_t AsyncExecute(BackgroundAsyncFunc_t func, const void *inData, uint32_t in
         async.inDataLen = inDataLen;
         async.shouldFree = true;
     }
-    PubBufferMsg(SENSITIVE_MSG_EXECUTE, &async, sizeof(BackgroundAsync_t));
+    uint32_t ret = PubBufferMsg(SENSITIVE_MSG_EXECUTE, &async, sizeof(BackgroundAsync_t));
+    if (ret != MSG_SUCCESS) {
+        // Queue full or unpublished: free the copied input instead of leaking it (audit M-3).
+        printf("AsyncExecute: PubBufferMsg failed ret=%u\r\n", ret);
+        if (async.shouldFree) {
+            SRAM_FREE(async.inData);
+        }
+        return (int32_t)ret;
+    }
     return SUCCESS_CODE;
 }
 
