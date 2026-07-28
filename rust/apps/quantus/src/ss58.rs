@@ -1,5 +1,6 @@
 extern crate alloc;
-use alloc::string::String;
+use alloc::format;
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use alloc::vec;
 use blake2::{Blake2b512, Digest};
@@ -40,25 +41,77 @@ fn ss58hash(data: &[u8]) -> Vec<u8> {
 
 const BS58_MIN_LEN: usize = 35; // Prefix (1) + ID (32) + Checksum (2)
 
-/// Decode an SS58-encoded address string back to a 32-byte public key
-pub fn decode(address: &str) -> [u8; 32] {
-    let decoded = base58::decode(address).expect("get valid base58");
+/// Decode an SS58-encoded address string back to a 32-byte public key, validating the
+/// network prefix and checksum. Returns an error on malformed input instead of panicking
+/// (audit L-1/L-2).
+pub fn decode(address: &str, version: u16) -> Result<[u8; 32], String> {
+    let decoded = base58::decode(address).map_err(|e| format!("invalid base58: {}", e))?;
     let len = decoded.len();
     if len < BS58_MIN_LEN {
-        panic!("Unable to decode bs58 address");
+        return Err(format!("address too short: {} bytes", len));
     }
-    let slice: [u8; 32] = decoded[len - 34..len - 2]
+    // Prefix: 1 byte for 0..=63, 2 bytes for 64..=16383 (inverse of `encode`).
+    let (prefix, prefix_len) = match decoded[0] {
+        first @ 0..=63 => (first as u16, 1usize),
+        first @ 0b0100_0000..=0b0111_1111 => {
+            let second = decoded[1] as u16;
+            (
+                (((first as u16) & 0b0011_1111) << 2) | (second >> 6) | ((second & 0b0011_1111) << 8),
+                2usize,
+            )
+        }
+        other => return Err(format!("invalid SS58 prefix byte {:#x}", other)),
+    };
+    let expected = version & 0b0011_1111_1111_1111;
+    if prefix != expected {
+        return Err(format!("SS58 prefix {} does not match expected {}", prefix, expected));
+    }
+    if len != prefix_len + 32 + 2 {
+        return Err(format!("unexpected address length: {} bytes", len));
+    }
+    let hash = ss58hash(&decoded[..len - 2]);
+    if decoded[len - 2..] != hash[..2] {
+        return Err("SS58 checksum mismatch".to_string());
+    }
+    decoded[prefix_len..prefix_len + 32]
         .try_into()
-        .expect("get array length of 32");
-    slice
+        .map_err(|_| "account id not 32 bytes".to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const QUANTUS_PREFIX: u16 = 189;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn encode_decode_roundtrip() {
+        let pubkey = [0xab; 32];
+        let address = encode(&pubkey, QUANTUS_PREFIX);
+        assert_eq!(decode(&address, QUANTUS_PREFIX).unwrap(), pubkey);
+    }
+
+    #[test]
+    fn rejects_wrong_prefix() {
+        let address = encode(&[0xab; 32], QUANTUS_PREFIX);
+        let err = decode(&address, 42).unwrap_err();
+        assert!(err.contains("prefix"), "{}", err);
+    }
+
+    #[test]
+    fn rejects_bad_checksum() {
+        let mut address = encode(&[0xab; 32], QUANTUS_PREFIX);
+        let last = address.len() - 1;
+        let c = address.as_bytes()[last];
+        // Flip the final base58 character to corrupt the checksum.
+        address.replace_range(last.., if c == b'1' { "2" } else { "1" });
+        assert!(decode(&address, QUANTUS_PREFIX).is_err());
+    }
+
+    #[test]
+    fn rejects_malformed_input() {
+        assert!(decode("not-base58!!!", QUANTUS_PREFIX).is_err());
+        assert!(decode("1", QUANTUS_PREFIX).is_err());
+        assert!(decode("", QUANTUS_PREFIX).is_err());
     }
 }

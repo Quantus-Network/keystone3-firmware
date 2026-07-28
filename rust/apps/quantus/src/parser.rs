@@ -10,6 +10,13 @@ use parity_scale_codec_derive::Decode as DeriveDecode;
 const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
 /// Maximum nesting of multisig `propose` inner calls (top-level call is depth 0).
 const MAX_CALL_DEPTH: u32 = 2;
+/// Minimum reversible-transfer delay, matching the on-chain `MinDelayPeriodMoment` (12 s);
+/// the pallet rejects shorter timestamp delays with `DelayTooShort`, so the parser rejects
+/// them too rather than display a hidden/blank reversal window (audit H-1).
+const MIN_REVERSIBLE_DELAY_MS: u64 = 12_000;
+/// Maximum number of multisig signers accepted for review; larger proposals are rejected
+/// so the review screen and checkphrase jobs stay bounded (audit M-1).
+const MAX_MULTISIG_SIGNERS: usize = 48;
 
 /// Networks this firmware will sign for: (genesis hash, display name).
 /// A payload whose `CheckGenesis` hash is not listed here is rejected.
@@ -100,6 +107,9 @@ enum MultisigCall {
     Approve {
         multisig_address: [u8; 32],
         proposal_id: u32,
+        // The chain binds approvals to the proposal's exact call bytes (`BoundedVec<u8>`,
+        // SCALE-encoded like `Vec<u8>`), so cold signers can decode what they approve.
+        call: Vec<u8>,
     },
     #[codec(index = 6)]
     Execute {
@@ -165,6 +175,9 @@ enum MetadataHashMode {
 /// "additional signed" parts (spec/tx version, genesis + block hash, optional metadata hash).
 /// Extensions with unit encoding (CheckNonZeroSender, CheckWeight, Reversible, Wormhole)
 /// contribute no bytes.
+/// `spec_version`, `transaction_version` and `block_hash` are parsed and bound into the
+/// signature but intentionally not displayed: raw version numbers and hashes are noise a
+/// user cannot meaningfully verify on-device (audit L-3).
 #[derive(DeriveDecode, Debug)]
 pub struct SignedExtensions {
     pub era: Era,
@@ -202,6 +215,7 @@ pub enum QuantusTx {
     MultisigApprove {
         multisig: String,
         proposal_id: u32,
+        inner: Box<QuantusTx>,
     },
     MultisigExecute {
         multisig: String,
@@ -216,6 +230,9 @@ impl QuantusTx {
 
     fn from_call(call: RuntimeCall, depth: u32) -> Result<Self, String> {
         match call {
+            // TransferAllowDeath and TransferKeepAlive are intentionally displayed
+            // identically: the review surface stays minimal so users can focus on the
+            // material fields instead of noisy pallet semantics (audit I-1).
             RuntimeCall::Balances(
                 BalancesCall::TransferAllowDeath { dest, value }
                 | BalancesCall::TransferKeepAlive { dest, value },
@@ -246,6 +263,12 @@ impl QuantusTx {
                         ))
                     }
                 };
+                if delay_ms < MIN_REVERSIBLE_DELAY_MS {
+                    return Err(format!(
+                        "Reversal delay {}ms is below the on-chain minimum {}ms",
+                        delay_ms, MIN_REVERSIBLE_DELAY_MS
+                    ));
+                }
                 Ok(QuantusTx::Transfer {
                     to: multi_address_to_ss58(dest),
                     amount,
@@ -257,11 +280,20 @@ impl QuantusTx {
                 signers,
                 threshold,
                 nonce,
-            }) => Ok(QuantusTx::MultisigCreate {
-                signers: signers.iter().map(bytes_to_ss58).collect(),
-                threshold,
-                nonce,
-            }),
+            }) => {
+                if signers.len() > MAX_MULTISIG_SIGNERS {
+                    return Err(format!(
+                        "Multisig has {} signers, exceeding the review limit of {}",
+                        signers.len(),
+                        MAX_MULTISIG_SIGNERS
+                    ));
+                }
+                Ok(QuantusTx::MultisigCreate {
+                    signers: signers.iter().map(bytes_to_ss58).collect(),
+                    threshold,
+                    nonce,
+                })
+            }
             RuntimeCall::Multisig(MultisigCall::Propose {
                 multisig_address,
                 call,
@@ -283,10 +315,23 @@ impl QuantusTx {
             RuntimeCall::Multisig(MultisigCall::Approve {
                 multisig_address,
                 proposal_id,
-            }) => Ok(QuantusTx::MultisigApprove {
-                multisig: bytes_to_ss58(&multisig_address),
-                proposal_id,
-            }),
+                call,
+            }) => {
+                if depth >= MAX_CALL_DEPTH {
+                    return Err(format!(
+                        "Multisig call nesting exceeds depth limit {}",
+                        MAX_CALL_DEPTH
+                    ));
+                }
+                // The approved call bytes are signed, so decode and render them; if the
+                // call is not one we can decode, reject rather than blind-approve (H-2).
+                let inner = decode_call(&call, depth + 1)?;
+                Ok(QuantusTx::MultisigApprove {
+                    multisig: bytes_to_ss58(&multisig_address),
+                    proposal_id,
+                    inner: Box::new(inner),
+                })
+            }
             RuntimeCall::Multisig(MultisigCall::Execute {
                 multisig_address,
                 proposal_id,
@@ -315,8 +360,8 @@ impl fmt::Display for QuantusTx {
             QuantusTx::MultisigPropose { multisig, expiry, inner } => {
                 write!(f, "Multisig propose on {} expiry {} call [{}]", multisig, expiry, inner)
             }
-            QuantusTx::MultisigApprove { multisig, proposal_id } => {
-                write!(f, "Multisig approve on {} proposal {}", multisig, proposal_id)
+            QuantusTx::MultisigApprove { multisig, proposal_id, inner } => {
+                write!(f, "Multisig approve on {} proposal {} call [{}]", multisig, proposal_id, inner)
             }
             QuantusTx::MultisigExecute { multisig, proposal_id } => {
                 write!(f, "Multisig execute on {} proposal {}", multisig, proposal_id)
@@ -497,6 +542,35 @@ mod tests {
     }
 
     #[test]
+    fn test_reject_subsecond_reversal_delay() {
+        // A 500ms timestamp delay is below the on-chain 12s minimum and must be rejected
+        // rather than displayed as a blank reversal window (audit H-1).
+        let mut call = alloc::vec![0x0b, 0x04, 0x00];
+        call.extend_from_slice(&[0x77; 32]);
+        call.extend_from_slice(&1_000_000_000_000u128.to_le_bytes());
+        call.push(0x01); // BlockNumberOrTimestamp::Timestamp
+        call.extend_from_slice(&500u64.to_le_bytes());
+        call.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        let err = parse_payload(&call).unwrap_err();
+        assert!(err.contains("below the on-chain minimum"), "{}", err);
+    }
+
+    #[test]
+    fn test_reject_multisig_create_over_signer_cap() {
+        // 49 signers exceeds the review cap and must be rejected (audit M-1).
+        let mut call = alloc::vec![0x13, 0x00];
+        call.extend(Compact((MAX_MULTISIG_SIGNERS + 1) as u32).encode());
+        for _ in 0..=MAX_MULTISIG_SIGNERS {
+            call.extend_from_slice(&[0xaa; 32]);
+        }
+        call.extend_from_slice(&2u32.to_le_bytes()); // threshold
+        call.extend_from_slice(&0u64.to_le_bytes()); // nonce
+        call.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        let err = parse_payload(&call).unwrap_err();
+        assert!(err.contains("signers"), "{}", err);
+    }
+
+    #[test]
     fn test_reject_unknown_genesis() {
         let payload = hex::decode(OLD_NETWORK_PAYLOAD).unwrap();
         let err = parse_payload(&payload).unwrap_err();
@@ -573,15 +647,37 @@ mod tests {
         }
     }
 
+    fn approve_wrapping(inner: &[u8]) -> Vec<u8> {
+        let mut call = alloc::vec![0x13, 0x02];
+        call.extend_from_slice(&[0x99; 32]);
+        call.extend_from_slice(&7u32.to_le_bytes());
+        call.extend(Compact(inner.len() as u32).encode());
+        call.extend_from_slice(inner);
+        call
+    }
+
     #[test]
     fn test_parse_real_multisig_approve() {
-        match parse_call_hex("1302999999999999999999999999999999999999999999999999999999999999999907000000") {
-            QuantusTx::MultisigApprove { multisig, proposal_id } => {
+        // approve wrapping Balances::transfer_allow_death(dest, 42_000_000_000), proposal 7
+        let inner = hex::decode("020000777777777777777777777777777777777777777777777777777777777777777707002465c709").unwrap();
+        let mut payload = approve_wrapping(&inner);
+        payload.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        match parse(&payload).call {
+            QuantusTx::MultisigApprove { multisig, proposal_id, inner } => {
                 assert_eq!(multisig, SS58_MULTISIG);
                 assert_eq!(proposal_id, 7);
+                assert_transfer(&inner, SS58_DEST, 42_000_000_000u128, false, None);
             }
             other => panic!("expected MultisigApprove, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_reject_multisig_approve_with_undecodable_call() {
+        // An approval whose bound call bytes do not decode must fail, never blind-approve.
+        let mut payload = approve_wrapping(&hex::decode("0500").unwrap());
+        payload.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        assert!(parse_payload(&payload).is_err());
     }
 
     #[test]

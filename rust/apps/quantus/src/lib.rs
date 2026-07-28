@@ -69,7 +69,10 @@ fn format_amount(amount: u128) -> String {
 fn format_duration(ms: u64) -> String {
     let seconds = ms / 1000;
     if seconds == 0 {
-        return "".to_string();
+        // Defense-in-depth: a non-zero sub-second duration must never render as a blank
+        // string and hide the reversal window (audit H-1). The parser already rejects
+        // delays below the on-chain minimum, so this only guards future call paths.
+        return if ms == 0 { String::new() } else { "< 1s".to_string() };
     }
     
     let days = seconds / 86400;
@@ -141,13 +144,20 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
             push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
             append_rows(inner, labels, values, with_checkphrase);
         }
-        QuantusTx::MultisigApprove { multisig, proposal_id } => {
+        QuantusTx::MultisigApprove { multisig, proposal_id, inner } => {
             push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
+            // The chain binds approvals to the proposal's call bytes; render the contained
+            // call so the signer never blind-approves (audit H-2).
+            push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
+            append_rows(inner, labels, values, with_checkphrase);
         }
         QuantusTx::MultisigExecute { multisig, proposal_id } => {
             push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
+            // Execute carries no call bytes, so the proposal contents cannot be verified
+            // on-device; say so instead of implying a verifiable review (audit H-2).
+            push_row(labels, values, "Warning", "Proposal contents not verifiable on-device".to_string());
         }
     }
 }
@@ -299,6 +309,14 @@ mod tests {
     use quantus_ur::{encode_bytes, decode_bytes};
 
     const TEST_HEDGE: [u8; 32] = [0x42; 32];
+
+    #[test]
+    fn test_format_duration_subsecond() {
+        assert_eq!(format_duration(0), "");
+        assert_eq!(format_duration(500), "< 1s");
+        assert_eq!(format_duration(1_000), "1s");
+        assert_eq!(format_duration(90_000), "1m 30s");
+    }
 
     #[test]
     fn test_sign_encode_decode_roundtrip() {
