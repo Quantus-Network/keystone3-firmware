@@ -2,7 +2,7 @@
 //! runtime metadata the chain itself publishes, so a codec mismatch (e.g. compact vs fixed
 //! u128 amounts) can never silently change what the device displays for the bytes it signs.
 //!
-//! The fixture is the live Planck V14 metadata (spec 131). Regenerate with:
+//! The fixture is the live Planck V14 metadata (spec 136). Regenerate with:
 //!   curl -s -H "Content-Type: application/json" \
 //!     -d '{"jsonrpc":"2.0","id":1,"method":"state_getMetadata","params":[]}' \
 //!     https://a1-planck.quantus.cat | jq -r .result | cut -c3- | xxd -r -p > planck_metadata.scale
@@ -12,7 +12,7 @@ use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use scale_info::{form::PortableForm, Type, TypeDef, TypeDefPrimitive, Variant};
 
-const METADATA: &[u8] = include_bytes!("fixtures/planck_metadata_v14_spec131.scale");
+const METADATA: &[u8] = include_bytes!("fixtures/planck_metadata_v14_spec136.scale");
 
 fn planck_metadata() -> RuntimeMetadataV14 {
     let prefixed = RuntimeMetadataPrefixed::decode(&mut &METADATA[..]).expect("decode metadata");
@@ -58,6 +58,13 @@ fn call<'a>(
     v
 }
 
+/// The mirror types decode every field in declaration order, so a field added, removed, or
+/// reordered on-chain is a break even when the fields the mirror knows about still resolve.
+fn assert_field_names(variant: &Variant<PortableForm>, expected: &[&str]) {
+    let names: Vec<&str> = variant.fields.iter().filter_map(|f| f.name.as_deref()).collect();
+    assert_eq!(names, expected, "{} fields", variant.name);
+}
+
 fn field_ty(variant: &Variant<PortableForm>, name: &str) -> u32 {
     variant
         .fields
@@ -87,6 +94,14 @@ fn newtype_inner(meta: &RuntimeMetadataV14, id: u32, what: &str) -> u32 {
     match &resolve(meta, id).type_def {
         TypeDef::Composite(c) if c.fields.len() == 1 => c.fields[0].ty.id,
         other => panic!("{}: expected single-field composite, got {:?}", what, other),
+    }
+}
+
+/// BoundedVec<u8> encodes exactly like Vec<u8>: newtype around a u8 sequence.
+fn assert_call_bytes(meta: &RuntimeMetadataV14, id: u32, what: &str) {
+    match &resolve(meta, newtype_inner(meta, id, what)).type_def {
+        TypeDef::Sequence(s) => assert_primitive(meta, s.type_param.id, TypeDefPrimitive::U8, what),
+        other => panic!("{}: expected byte sequence, got {:?}", what, other),
     }
 }
 
@@ -127,6 +142,7 @@ fn balances_transfer_amounts_are_compact_u128() {
     let calls = pallet_calls(&meta, "Balances", 2);
     for (index, name) in [(0, "transfer_allow_death"), (3, "transfer_keep_alive")] {
         let c = call(calls, index, name);
+        assert_field_names(c, &["dest", "value"]);
         assert_multi_address(&meta, field_ty(c, "dest"), name);
         assert_compact(&meta, field_ty(c, "value"), TypeDefPrimitive::U128, name);
     }
@@ -136,8 +152,12 @@ fn balances_transfer_amounts_are_compact_u128() {
 fn reversible_transfer_amounts_are_plain_u128() {
     let meta = planck_metadata();
     let calls = pallet_calls(&meta, "ReversibleTransfers", 11);
-    for (index, name) in [(3, "schedule_transfer"), (4, "schedule_transfer_with_delay")] {
+    for (index, name, fields) in [
+        (3, "schedule_transfer", &["dest", "amount"][..]),
+        (4, "schedule_transfer_with_delay", &["dest", "amount", "delay"][..]),
+    ] {
         let c = call(calls, index, name);
+        assert_field_names(c, fields);
         assert_multi_address(&meta, field_ty(c, "dest"), name);
         // The heart of H-2: fixed-width u128, NOT compact like Balances.
         assert_primitive(&meta, field_ty(c, "amount"), TypeDefPrimitive::U128, name);
@@ -159,6 +179,7 @@ fn multisig_calls_match_mirror_types() {
     let calls = pallet_calls(&meta, "Multisig", 19);
 
     let create = call(calls, 0, "create_multisig");
+    assert_field_names(create, &["signers", "threshold", "nonce"]);
     match &resolve(&meta, field_ty(create, "signers")).type_def {
         TypeDef::Sequence(s) => {
             assert_32_byte_newtype(&meta, s.type_param.id, "AccountId32", "signers")
@@ -169,22 +190,23 @@ fn multisig_calls_match_mirror_types() {
     assert_primitive(&meta, field_ty(create, "nonce"), TypeDefPrimitive::U64, "nonce");
 
     let propose = call(calls, 1, "propose");
+    assert_field_names(propose, &["multisig_address", "call", "expiry"]);
     assert_32_byte_newtype(&meta, field_ty(propose, "multisig_address"), "AccountId32", "propose");
-    // BoundedVec<u8> encodes exactly like Vec<u8>: newtype around a u8 sequence.
-    let call_inner = newtype_inner(&meta, field_ty(propose, "call"), "propose call");
-    match &resolve(&meta, call_inner).type_def {
-        TypeDef::Sequence(s) => {
-            assert_primitive(&meta, s.type_param.id, TypeDefPrimitive::U8, "propose call bytes")
-        }
-        other => panic!("propose call: expected byte sequence, got {:?}", other),
-    }
+    assert_call_bytes(&meta, field_ty(propose, "call"), "propose call");
     assert_primitive(&meta, field_ty(propose, "expiry"), TypeDefPrimitive::U32, "expiry");
 
-    for (index, name) in [(2, "approve"), (6, "execute")] {
-        let c = call(calls, index, name);
-        assert_32_byte_newtype(&meta, field_ty(c, "multisig_address"), "AccountId32", name);
-        assert_primitive(&meta, field_ty(c, "proposal_id"), TypeDefPrimitive::U32, name);
-    }
+    // The chain binds approvals to the proposal's exact call bytes (audit H-2); the mirror
+    // decodes them, so their presence and encoding are load-bearing.
+    let approve = call(calls, 2, "approve");
+    assert_field_names(approve, &["multisig_address", "proposal_id", "call"]);
+    assert_32_byte_newtype(&meta, field_ty(approve, "multisig_address"), "AccountId32", "approve");
+    assert_primitive(&meta, field_ty(approve, "proposal_id"), TypeDefPrimitive::U32, "approve");
+    assert_call_bytes(&meta, field_ty(approve, "call"), "approve call");
+
+    let execute = call(calls, 6, "execute");
+    assert_field_names(execute, &["multisig_address", "proposal_id"]);
+    assert_32_byte_newtype(&meta, field_ty(execute, "multisig_address"), "AccountId32", "execute");
+    assert_primitive(&meta, field_ty(execute, "proposal_id"), TypeDefPrimitive::U32, "execute");
 }
 
 /// The parser's `SignedExtensions` struct assumes an exact extension order and codec for each
