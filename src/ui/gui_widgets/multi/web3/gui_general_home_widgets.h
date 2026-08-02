@@ -62,7 +62,7 @@
 
 #define HOME_WALLET_STATE_SURPLUS                         \
     {HOME_WALLET_CARD_ETH, false, "ETH", true},           \
-    {HOME_WALLET_CARD_QUANTUS, false, "QNT", true},       \
+    {HOME_WALLET_CARD_QUANTUS, false, "QUAN", true},      \
         {HOME_WALLET_CARD_SOL, false, "SOL", true},       \
         {HOME_WALLET_CARD_BNB, false, "BNB", false},      \
         {HOME_WALLET_CARD_HNT, false, "HNT", true},       \
@@ -131,7 +131,7 @@
         },                                     \
         {                                      \
             .index = HOME_WALLET_CARD_QUANTUS, \
-            .coin = "QNT",                     \
+            .coin = "QUAN",                    \
             .chain = "Quantus",                \
             .icon = &coinQuantus,              \
         },                                     \
