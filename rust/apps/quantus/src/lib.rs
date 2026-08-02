@@ -43,7 +43,7 @@ fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
     let keys = get_keys(mnemonic, passphrase, path)?;
         
-    let pub_key_bytes = keys.public.to_bytes();
+    let pub_key_bytes = keys.public().to_bytes();
     
     let account_id = hash_bytes(&pub_key_bytes);
     
@@ -276,7 +276,7 @@ pub fn sign_raw_tx(
     };
 
     // 3. Sign
-    let signature = keys.secret.sign(&msg_to_sign, None, Some(hedge))
+    let signature = keys.sign(&msg_to_sign, None, Some(hedge))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
     #[cfg(not(test))]
@@ -284,7 +284,7 @@ pub fn sign_raw_tx(
 
     // 4. Concatenate Signature + Public Key
     let mut signature_with_pubkey = signature.to_vec();
-    signature_with_pubkey.extend_from_slice(&keys.public.to_bytes());
+    signature_with_pubkey.extend_from_slice(&keys.public().to_bytes());
 
     #[cfg(not(test))]
     debug!(alloc::format!("signature_with_pubkey len: {}", signature_with_pubkey.len()));
