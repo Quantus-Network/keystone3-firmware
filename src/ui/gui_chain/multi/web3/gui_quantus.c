@@ -36,18 +36,16 @@ static DisplayQuantusTx *g_quantusData = NULL;
 // The parser caps multisig signers at 48 (audit M-1), so 50 slots cover a max-size create
 // (48 signers) plus the multisig/recipient addresses of the other call types.
 #define QUANTUS_TX_CHECKPHRASE_MAX_LABELS 50
-// At most this many checkphrase jobs are queued on the sensitive-data task at once; each
-// completed job dispatches the next pending one (audit M-1). Too many simultaneous jobs
-// would exhaust the device.
 #define QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT 2
+#define QUANTUS_ADDRESS_MAX_LEN 64
 typedef struct {
-    char address[ADDRESS_MAX_LEN];
+    char address[QUANTUS_ADDRESS_MAX_LEN];
     uint32_t labelIndex;
     uint32_t session;
 } QuantusTxCheckphraseJobCtx_t;
 
 static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_LABELS];
-static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][ADDRESS_MAX_LEN];
+static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][QUANTUS_ADDRESS_MAX_LEN];
 static uint32_t g_quantusTxCheckphraseLabelCount = 0;
 static uint32_t g_quantusTxCheckphraseNextDispatch = 0;
 static uint32_t g_quantusTxCheckphraseJobsInFlight = 0;
