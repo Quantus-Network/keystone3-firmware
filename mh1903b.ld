@@ -75,4 +75,4 @@ SECTIONS
 	}
 }
 
-end = .;
+end = _ebss;
