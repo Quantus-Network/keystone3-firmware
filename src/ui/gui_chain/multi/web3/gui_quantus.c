@@ -40,14 +40,18 @@ static DisplayQuantusTx *g_quantusData = NULL;
 // completed job dispatches the next pending one (audit M-1). Too many simultaneous jobs
 // would exhaust the device.
 #define QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT 2
+// Quantus addresses are SS58 (prefix 189): 36 payload bytes -> ~51 base58 chars, so 64 is ample.
+// Keeping this well under the generic ADDRESS_MAX_LEN (256) saves ~9.6KB of .bss across the
+// 50 checkphrase slots, which was enough to overflow the 1024K SRAM region at link time.
+#define QUANTUS_ADDRESS_MAX_LEN 64
 typedef struct {
-    char address[ADDRESS_MAX_LEN];
+    char address[QUANTUS_ADDRESS_MAX_LEN];
     uint32_t labelIndex;
     uint32_t session;
 } QuantusTxCheckphraseJobCtx_t;
 
 static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_LABELS];
-static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][ADDRESS_MAX_LEN];
+static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][QUANTUS_ADDRESS_MAX_LEN];
 static uint32_t g_quantusTxCheckphraseLabelCount = 0;
 static uint32_t g_quantusTxCheckphraseNextDispatch = 0;
 static uint32_t g_quantusTxCheckphraseJobsInFlight = 0;
