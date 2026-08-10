@@ -2,7 +2,9 @@
 #include "cmsis_os.h"
 #include "general_msg.h"
 
+#ifndef BUILD_PRODUCTION
 osMessageQueueId_t g_cmdQueue = NULL;
+#endif
 osMessageQueueId_t g_testQueue = NULL;
 osMessageQueueId_t g_qrDecodeQueue = NULL;
 osMessageQueueId_t g_uiQueue = NULL;
@@ -16,7 +18,9 @@ osMessageQueueId_t g_springQueue = NULL;
 void UserMsgInit(void)
 {
     //Queues for the message mechanism are created here
+#ifndef BUILD_PRODUCTION
     g_cmdQueue = osMessageQueueNew(10, sizeof(Message_t), NULL);
+#endif
     g_testQueue = osMessageQueueNew(10, sizeof(Message_t), NULL);
     g_qrDecodeQueue = osMessageQueueNew(5, sizeof(Message_t), NULL);
     g_uiQueue = osMessageQueueNew(5, sizeof(Message_t), NULL);
@@ -28,7 +32,9 @@ void UserMsgInit(void)
     g_sensitiveQueue = osMessageQueueNew(5, sizeof(Message_t), NULL);
 
     //All messages are registered here
+#ifndef BUILD_PRODUCTION
     SubMessageID(MSG_TEST_CMD_FRAME, g_cmdQueue);
+#endif
 
     SubMessageID(TEST_MSG_MEASUREMENT, g_testQueue);
     SubMessageID(TEST_MSG_ASYNPRINT, g_testQueue);

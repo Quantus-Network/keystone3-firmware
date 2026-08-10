@@ -31,28 +31,23 @@ static bool g_isMulti = false;
 static void *g_parseResult = NULL;
 static DisplayQuantusTx *g_quantusData = NULL;
 
-// Async checkphrase state for the transaction-signing screen. The screen is rendered with empty
-// checkphrase placeholders, then background jobs fill them in and emit SIG_QUANTUS_TX_CHECKPHRASE_READY.
-// The parser caps multisig signers at 48 (audit M-1), so 50 slots cover a max-size create
-// (48 signers) plus the multisig/recipient addresses of the other call types.
-#define QUANTUS_TX_CHECKPHRASE_MAX_LABELS 50
+// Async checkphrase state for the transaction-signing screen. The shared address-to-checkphrase
+// LRU lives in Rust; this is only a bounded scheduler queue. Addresses remain owned by the parsed
+// transaction until the queue is invalidated, so storing pointers avoids copying 50 fixed buffers.
+#define QUANTUS_TX_CHECKPHRASE_MAX_PENDING 50
 // At most this many checkphrase jobs are queued on the sensitive-data task at once; each
 // completed job dispatches the next pending one (audit M-1). Too many simultaneous jobs
 // would exhaust the device.
 #define QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT 2
-// Quantus addresses are SS58 (prefix 189): 36 payload bytes -> ~51 base58 chars, so 64 is ample.
-// Keeping this well under the generic ADDRESS_MAX_LEN (256) saves ~9.6KB of .bss across the
-// 50 checkphrase slots, which was enough to overflow the 1024K SRAM region at link time.
-#define QUANTUS_ADDRESS_MAX_LEN 64
 typedef struct {
     char address[QUANTUS_ADDRESS_MAX_LEN];
     uint32_t labelIndex;
     uint32_t session;
 } QuantusTxCheckphraseJobCtx_t;
 
-static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_LABELS];
-static char g_quantusTxCheckphraseAddrs[QUANTUS_TX_CHECKPHRASE_MAX_LABELS][QUANTUS_ADDRESS_MAX_LEN];
-static uint32_t g_quantusTxCheckphraseLabelCount = 0;
+static lv_obj_t *g_quantusTxCheckphraseLabels[QUANTUS_TX_CHECKPHRASE_MAX_PENDING];
+static const char *g_quantusTxCheckphrasePendingAddrs[QUANTUS_TX_CHECKPHRASE_MAX_PENDING];
+static uint32_t g_quantusTxCheckphrasePendingCount = 0;
 static uint32_t g_quantusTxCheckphraseNextDispatch = 0;
 static uint32_t g_quantusTxCheckphraseJobsInFlight = 0;
 static uint32_t g_quantusTxCheckphraseSession = 0;
@@ -82,7 +77,7 @@ void *GuiGetQuantusData(void)
     // g_quantusData aliased into the result freed above; clear it so a parse failure below
     // cannot leave the display getters reading freed memory (audit M-4).
     g_quantusData = NULL;
-    g_quantusTxCheckphraseLabelCount = 0;
+    g_quantusTxCheckphrasePendingCount = 0;
     g_quantusTxCheckphraseNextDispatch = 0;
     g_quantusTxCheckphraseJobsInFlight = 0;
     g_quantusTxCheckphraseSession++;
@@ -147,14 +142,27 @@ typedef struct {
 static int32_t QuantusTxCheckphraseBgFunc(const void *inData, uint32_t inDataLen);
 
 // Register a placeholder label and the address whose checkphrase will fill it.
-static void QuantusTxCheckphraseRegister(lv_obj_t *label, const char *address)
+static bool QuantusTxCheckphraseRegister(lv_obj_t *label, const char *address)
 {
-    if (g_quantusTxCheckphraseLabelCount >= QUANTUS_TX_CHECKPHRASE_MAX_LABELS) {
-        return;
+    if (label == NULL || address == NULL || address[0] == '\0') {
+        printf("ERROR: Quantus transaction checkphrase registration has invalid input\r\n");
+        return false;
     }
-    uint32_t idx = g_quantusTxCheckphraseLabelCount++;
+    if (g_quantusTxCheckphraseNextDispatch != 0 || g_quantusTxCheckphraseJobsInFlight != 0) {
+        printf("ERROR: Quantus transaction checkphrase registered after dispatch started\r\n");
+        return false;
+    }
+
+    if (g_quantusTxCheckphrasePendingCount >= QUANTUS_TX_CHECKPHRASE_MAX_PENDING) {
+        printf("ERROR: Quantus transaction checkphrase queue full (%u)\r\n",
+               QUANTUS_TX_CHECKPHRASE_MAX_PENDING);
+        return false;
+    }
+
+    uint32_t idx = g_quantusTxCheckphrasePendingCount++;
     g_quantusTxCheckphraseLabels[idx] = label;
-    strcpy_s(g_quantusTxCheckphraseAddrs[idx], sizeof(g_quantusTxCheckphraseAddrs[idx]), address);
+    g_quantusTxCheckphrasePendingAddrs[idx] = address;
+    return true;
 }
 
 // Queue pending checkphrase jobs, at most QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT at a time.
@@ -163,10 +171,10 @@ static void QuantusTxCheckphraseRegister(lv_obj_t *label, const char *address)
 static void QuantusTxCheckphraseDispatchNext(void)
 {
     while (g_quantusTxCheckphraseJobsInFlight < QUANTUS_TX_CHECKPHRASE_MAX_IN_FLIGHT &&
-            g_quantusTxCheckphraseNextDispatch < g_quantusTxCheckphraseLabelCount) {
+            g_quantusTxCheckphraseNextDispatch < g_quantusTxCheckphrasePendingCount) {
         uint32_t idx = g_quantusTxCheckphraseNextDispatch;
         QuantusTxCheckphraseJobCtx_t ctx;
-        strcpy_s(ctx.address, sizeof(ctx.address), g_quantusTxCheckphraseAddrs[idx]);
+        strcpy_s(ctx.address, sizeof(ctx.address), g_quantusTxCheckphrasePendingAddrs[idx]);
         ctx.labelIndex = idx;
         ctx.session = g_quantusTxCheckphraseSession;
         g_quantusTxCheckphraseJobsInFlight++;
@@ -338,8 +346,9 @@ void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData)
     if (g_quantusData == NULL || g_quantusData->to == NULL || g_quantusData->to[0] == '\0') {
         return;
     }
-    QuantusTxCheckphraseRegister(label, g_quantusData->to);
-    QuantusTxCheckphraseDispatchNext();
+    if (QuantusTxCheckphraseRegister(label, g_quantusData->to)) {
+        QuantusTxCheckphraseDispatchNext();
+    }
 }
 
 bool GetQuantusIsTransfer(void *indata, void *param)
@@ -385,11 +394,11 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
                 lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 12 + lv_obj_get_height(cpLabel));
 
                 QuantusTxCheckphraseRegister(cpLabel, values->data[i - 1]);
-                QuantusTxCheckphraseDispatchNext();
                 continue;
             }
             lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
         }
+        QuantusTxCheckphraseDispatchNext();
     }
 }
 
@@ -410,8 +419,9 @@ void GuiQuantusTxCheckphraseReady(void *param)
                ready->session, g_quantusTxCheckphraseSession);
         return;
     }
-    if (ready->labelIndex >= g_quantusTxCheckphraseLabelCount) {
-        printf("Quantus: checkphrase ready label index %u out of range (count=%u)\r\n", ready->labelIndex, g_quantusTxCheckphraseLabelCount);
+    if (ready->labelIndex >= g_quantusTxCheckphrasePendingCount) {
+        printf("ERROR: Quantus checkphrase ready index %u out of range (count=%u)\r\n",
+               ready->labelIndex, g_quantusTxCheckphrasePendingCount);
         return;
     }
     if (ready->phrase[0] == '\0') {
@@ -646,7 +656,7 @@ void FreeQuantusMemory(void)
     CHECK_FREE_UR_RESULT(g_urMultiResult, true);
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     g_quantusData = NULL;
-    g_quantusTxCheckphraseLabelCount = 0;
+    g_quantusTxCheckphrasePendingCount = 0;
     g_quantusTxCheckphraseNextDispatch = 0;
     g_quantusTxCheckphraseJobsInFlight = 0;
     // Invalidate in-flight checkphrase jobs so a stale result is never rendered into the

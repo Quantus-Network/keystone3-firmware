@@ -54,17 +54,18 @@ static void QuantusAddrJob(void *p)
 // PIN at all. Addresses are public, so caching them is not a secrets concern. Entries are keyed by
 // the master fingerprint (which captures account + passphrase identity), so the cache auto-
 // invalidates on any wallet/passphrase change and can never surface a stale address.
-#define QUANTUS_ADDR_CACHE_SIZE 16
+#define QUANTUS_ADDR_CACHE_SIZE 5
 typedef struct {
     bool valid;
     uint8_t mfp[4];
     uint32_t index;
-    char address[ADDRESS_MAX_LEN];
+    char address[QUANTUS_ADDRESS_MAX_LEN];
 } QuantusAddrCacheEntry_t;
 static QuantusAddrCacheEntry_t g_quantusAddrCache[QUANTUS_ADDR_CACHE_SIZE];
+static uint32_t g_quantusAddrCacheNextEvict = 0;
 
 // Result of an off-UI-thread derivation, consumed by GuiStandardReceiveQuantusAddressReady.
-static char g_quantusAsyncAddr[ADDRESS_MAX_LEN];
+static char g_quantusAsyncAddr[QUANTUS_ADDRESS_MAX_LEN];
 static uint32_t g_quantusAsyncIndex;
 static bool g_quantusAsyncOk;
 // Set when the PIN was entered to derive an address; tells the completion handler to wipe the PIN
@@ -74,8 +75,8 @@ static bool g_quantusClearPinAfterDerive = false;
 // Off-UI-thread checkphrase state. The address/QR is shown immediately; the checkphrase is computed
 // in the background and filled in when ready. Stale results are ignored if the user switched addresses
 // or left the screen before the job finished.
-static char g_quantusCheckphraseExpectedAddr[ADDRESS_MAX_LEN];
-static char g_quantusCheckphraseAsyncAddr[ADDRESS_MAX_LEN];
+static char g_quantusCheckphraseExpectedAddr[QUANTUS_ADDRESS_MAX_LEN];
+static char g_quantusCheckphraseAsyncAddr[QUANTUS_ADDRESS_MAX_LEN];
 static char g_quantusCheckphraseResult[96];
 static bool g_quantusCheckphraseAsyncOk;
 
@@ -109,12 +110,13 @@ static void QuantusAddrCachePut(uint32_t index, const char *address)
         }
     }
     if (slot == QUANTUS_ADDR_CACHE_SIZE) {
-        slot = index % QUANTUS_ADDR_CACHE_SIZE;
+        slot = g_quantusAddrCacheNextEvict;
+        g_quantusAddrCacheNextEvict = (g_quantusAddrCacheNextEvict + 1) % QUANTUS_ADDR_CACHE_SIZE;
     }
     g_quantusAddrCache[slot].valid = true;
     memcpy_s(g_quantusAddrCache[slot].mfp, 4, mfp, 4);
     g_quantusAddrCache[slot].index = index;
-    strcpy_s(g_quantusAddrCache[slot].address, ADDRESS_MAX_LEN, address);
+    strcpy_s(g_quantusAddrCache[slot].address, sizeof(g_quantusAddrCache[slot].address), address);
 }
 
 // Derive the Quantus address for `index`. Heavy ML-DSA work runs on the dedicated PSRAM crypto
@@ -1278,7 +1280,7 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         result = tron_get_address(hdPath, xPub);
         break;
     case HOME_WALLET_CARD_QUANTUS: {
-        char addr[ADDRESS_MAX_LEN];
+        char addr[QUANTUS_ADDRESS_MAX_LEN];
         if (QuantusAddrCacheGet(index, addr, sizeof(addr))) {
             item->index = index;
             strcpy_s(item->address, ADDRESS_MAX_LEN, addr);

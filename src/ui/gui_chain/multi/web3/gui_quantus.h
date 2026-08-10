@@ -9,6 +9,10 @@
 // signing uses index 0, matching the only index the receive UI exposes (audit M-2).
 #define QUANTUS_HD_PATH_FMT "m/44'/189189'/%u'/0'/0'"
 
+// Quantus addresses are SS58 (prefix 189): 36 payload bytes encode to about 51 base58
+// characters, including the terminator, so 64 bytes leaves explicit headroom.
+#define QUANTUS_ADDRESS_MAX_LEN 64
+
 void GuiSetQuantusUrData(URParseResult *urResult, URParseMultiResult *urMultiResult, bool multi);
 void *GuiGetQuantusData(void);
 PtrT_TransactionCheckResult GuiGetQuantusCheckResult(void);
