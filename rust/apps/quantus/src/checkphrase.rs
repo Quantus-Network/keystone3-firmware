@@ -11,7 +11,7 @@ const SALT: &[u8] = b"human-readable-checksum";
 const ITERATIONS: u32 = 40000;
 const CHECKSUM_LEN: usize = 5;
 const KEY_BYTECOUNT: usize = 7; // ceil(5 * 11 / 8)
-const MAX_CACHE_ENTRIES: usize = 64;
+const MAX_CACHE_ENTRIES: usize = 5;
 
 struct CacheEntry {
     address: String,
@@ -24,7 +24,9 @@ struct CheckphraseCache {
 
 impl CheckphraseCache {
     const fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     /// Look up a cached phrase and move it to the back so it survives eviction
@@ -62,11 +64,11 @@ impl CheckphraseCache {
 static CACHE: Mutex<CheckphraseCache> = Mutex::new(CheckphraseCache::new());
 
 /// Compute the human-readable checkphrase for an address, serving cached
-/// results when available. The cache is keyed by address, is safe to keep
-/// indefinitely (a firmware update naturally resets it), and never blocks a
-/// caller: on lock contention the phrase is recomputed directly.
+/// results when available. The cache is keyed by address and is safe to keep
+/// indefinitely (a firmware update naturally resets it).
 pub fn from_address(ss58_address: &str) -> String {
-    if let Some(mut cache) = CACHE.try_lock() {
+    {
+        let mut cache = CACHE.lock();
         if let Some(phrase) = cache.get(ss58_address) {
             return phrase;
         }
@@ -74,9 +76,7 @@ pub fn from_address(ss58_address: &str) -> String {
 
     let phrase = from_address_uncached(ss58_address);
 
-    if let Some(mut cache) = CACHE.try_lock() {
-        cache.put(ss58_address, &phrase);
-    }
+    CACHE.lock().put(ss58_address, &phrase);
 
     phrase
 }
@@ -133,6 +133,25 @@ mod tests {
     fn matches_reference_bitcoin_satoshi() {
         let phrase = from_address("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa");
         assert_eq!(phrase, "ahead-aware-sea-blockbuster-hedgehog");
+    }
+
+    #[test]
+    fn cache_is_bounded_and_lru() {
+        let mut cache = CheckphraseCache::new();
+        for i in 0..MAX_CACHE_ENTRIES {
+            cache.put(
+                &alloc::format!("address-{i}"),
+                &alloc::format!("phrase-{i}"),
+            );
+        }
+
+        assert_eq!(cache.get("address-0").as_deref(), Some("phrase-0"));
+        cache.put("address-new", "phrase-new");
+
+        assert_eq!(cache.entries.len(), MAX_CACHE_ENTRIES);
+        assert!(cache.get("address-1").is_none());
+        assert_eq!(cache.get("address-0").as_deref(), Some("phrase-0"));
+        assert_eq!(cache.get("address-new").as_deref(), Some("phrase-new"));
     }
 }
 
