@@ -67,6 +67,10 @@ def build_firmware(environment, options, bin_type):
     make_result = os.system('make -j')
     if make_result != 0:
         return make_result
+    if "simulator" in options:
+        # Simulator builds produce no mh1903.bin; padding would create a blank
+        # fake one (and ota_maker would wrap it into a bogus keystone3.bin).
+        return 0
     return os.system('python3 padding_bin_file.py mh1903.bin')
 
 
@@ -157,7 +161,7 @@ if __name__ == '__main__':
     build_result = build_firmware(env, options, bin_type)
     if build_result != 0:
         exit(1)
-    if platform.system() == 'Darwin':
+    if platform.system() == 'Darwin' and "simulator" not in options:
         ota_maker()
     purpose = args.purpose
     if purpose and purpose == "debug":
