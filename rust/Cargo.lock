@@ -370,8 +370,8 @@ dependencies = [
  "parity-scale-codec-derive",
  "qp-dilithium-crypto",
  "qp-poseidon-core",
- "qp-rusty-crystals-dilithium 4.0.0",
- "qp-rusty-crystals-hdwallet 4.0.0",
+ "qp-rusty-crystals-dilithium",
+ "qp-rusty-crystals-hdwallet",
  "quantus_ur",
  "rust_tools",
  "scale-info",
@@ -4735,78 +4735,49 @@ dependencies = [
 
 [[package]]
 name = "qp-dilithium-crypto"
-version = "0.5.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c08c0931c083cc461bd09795d528a0e4f34e6e4745e9bb52eadb3aad2e60469"
+checksum = "bb9273e5fb0af1d9444f2d6f1ac1c89fe990a0ee182c2d77eff3e860376f2b71"
 dependencies = [
  "log",
  "parity-scale-codec",
  "qp-poseidon-core",
- "qp-rusty-crystals-dilithium 3.0.1",
- "qp-rusty-crystals-hdwallet 3.0.1",
+ "qp-rusty-crystals-dilithium",
+ "qp-rusty-crystals-hdwallet",
  "scale-info",
  "sp-core",
  "sp-runtime",
  "thiserror 2.0.18",
+ "zeroize",
 ]
 
 [[package]]
 name = "qp-poseidon-core"
-version = "3.0.2"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55e32db7b3a5d70086f82f198ecfc021f17cb7ec70a416512dba3488f4a116c1"
+checksum = "5872607e25ea4ee5fb37e64bf1462168e1a36a4e719cdc8a105533c708253918"
 
 [[package]]
 name = "qp-rusty-crystals-dilithium"
-version = "3.0.1"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f6eb664c03395b3892f7f18d4f08bff0e256a967bb0146598a0f771d5e99ba"
-dependencies = [
- "zeroize",
-]
-
-[[package]]
-name = "qp-rusty-crystals-dilithium"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0799fbe9bf179087eae23c9ba89c1f6c62228a4afdb999c5c0975a0f17c3c5bf"
+checksum = "2facf5349ce149731e6d21dc338f847c78e4a3a65e92e086e2cee244e7cf0457"
 dependencies = [
  "zeroize",
 ]
 
 [[package]]
 name = "qp-rusty-crystals-hdwallet"
-version = "3.0.1"
+version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a9a9d975e8bfa2b6726f9668f32bd134a2556ccf65f4d336fed941658e4db67"
-dependencies = [
- "bip39",
- "getrandom 0.2.17",
- "hex",
- "hex-literal",
- "hmac 0.12.1",
- "qp-poseidon-core",
- "qp-rusty-crystals-dilithium 3.0.1",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "thiserror 2.0.18",
- "unicode-normalization",
- "zeroize",
-]
-
-[[package]]
-name = "qp-rusty-crystals-hdwallet"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6865ff92884da31f4a6a38751f393f24107b72a8610e61e26cda8add47479520"
+checksum = "40119eb0c9a085722330c15ce17b71ca3aaecf5fa5a44891a47c1c9ec2c3109c"
 dependencies = [
  "bip39",
  "getrandom 0.2.17",
  "hex",
  "hex-literal",
  "qp-poseidon-core",
- "qp-rusty-crystals-dilithium 4.0.0",
+ "qp-rusty-crystals-dilithium",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4818,7 +4789,7 @@ dependencies = [
 [[package]]
 name = "quantus_ur"
 version = "0.1.0"
-source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.4.0#f3929da023e9c8081b8e9944b5b665871980fa79"
+source = "git+https://github.com/Quantus-Network/quantus_ur.git?tag=1.6.0#0b9bcc586a6ccb845c4d476ffa0880b0478b284a"
 dependencies = [
  "hex",
  "keystone-ur",
@@ -5231,7 +5202,7 @@ dependencies = [
  "keystore",
  "minicbor",
  "no_std_io2",
- "qp-rusty-crystals-dilithium 4.0.0",
+ "qp-rusty-crystals-dilithium",
  "quantus_ur",
  "rand_core 0.6.4",
  "rsa",

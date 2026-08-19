@@ -296,6 +296,17 @@ void SetConnectWalletNetwork(const char* walletName, uint32_t index);
 
 #ifdef WEB3_VERSION
 ChainType CheckSolPathSupport(char *path);
+
+// Quantus derived-address store: ML-DSA addresses cost ~10s to derive, so every address
+// derived on the receive screen is persisted (full SS58, per wallet slot, bound to the
+// wallet's master fingerprint) in a dedicated flash region. Used for the signer-to-index
+// lookup and the account list; the receive QR itself always comes from a fresh derivation,
+// and signing re-derives and verifies the address, so tampering with this store can only
+// cause a mislabeled list row or a clean signing refusal.
+void SetQuantusStoredAddress(uint32_t index, const char *address);
+bool GetQuantusStoredAddress(uint32_t index, char *outAddress, uint32_t maxLen);
+int32_t GetQuantusStoredAddressIndex(const char *address);
+void ClearQuantusStoredAddresses(uint8_t accountIndex);
 #endif
 
 #ifdef BTC_ONLY

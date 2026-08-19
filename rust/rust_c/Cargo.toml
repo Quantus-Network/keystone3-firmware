@@ -60,7 +60,7 @@ app_monero = { workspace = true, optional = true }
 app_avalanche = { workspace = true, optional = true }
 app_iota = { workspace = true, optional = true }
 app_quantus = { workspace = true, optional = true }
-quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.4.0", optional = true, default-features = false }
+quantus_ur = { git = "https://github.com/Quantus-Network/quantus_ur.git", tag = "1.6.0", optional = true, default-features = false }
 [lib]
 crate-type = ["staticlib"]
 
@@ -149,7 +149,7 @@ default = ["simulator-multi-coins"]
 
 [dev-dependencies]
 keystore = { path = "../keystore" }
-qp-rusty-crystals-dilithium = { version = "4.0.0", default-features = false, features = ["ml-dsa-87"] }
+qp-rusty-crystals-dilithium = { version = "4.1.0", default-features = false, features = ["ml-dsa-87"] }
 
 [build-dependencies]
 cbindgen = "0.27.0"

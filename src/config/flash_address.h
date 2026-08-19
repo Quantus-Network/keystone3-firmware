@@ -20,6 +20,10 @@
 #define BOOT_SECURE_PARAM_FLAG                  0x00F6D800
 #define BOOT_SECURE_PARAM_FLAG_SIZE             0x1000
 
+//QUANTUS DERIVED ADDRESS STORE, 32KB per wallet slot
+#define SPI_FLASH_ADDR_QUANTUS_DATA             0x00F70000
+#define SPI_FLASH_SIZE_QUANTUS_DATA             0x8000
+
 #define SPI_FLASH_ADDR_EACH_SIZE                0x19000
 
 //USER1 DATA, 100KB

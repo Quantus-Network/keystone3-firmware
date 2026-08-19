@@ -122,6 +122,8 @@ GetCustomContainerFunc GetOtherChainCustomFunc(char *funcName)
         return GuiQuantusMultisigDetails;
     } else if (!strcmp(funcName, "GuiQuantusCheckphraseContainer")) {
         return GuiQuantusCheckphraseContainer;
+    } else if (!strcmp(funcName, "GuiQuantusSenderCheckphraseContainer")) {
+        return GuiQuantusSenderCheckphraseContainer;
     }
 
     return NULL;

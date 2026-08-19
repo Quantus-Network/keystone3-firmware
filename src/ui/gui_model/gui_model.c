@@ -1136,6 +1136,7 @@ static int32_t ModelDelWallet(const void *inData, uint32_t inDataLen)
             GuiResetCurrentEthAddressIndex(accountIndex);
             GuiResetCurrentStandardAddressIndex(accountIndex);
             GuiResetCurrentMultiAccountsCache(accountIndex);
+            ClearQuantusStoredAddresses(accountIndex);
 #endif
         }
 

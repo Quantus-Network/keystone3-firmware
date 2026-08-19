@@ -8,12 +8,15 @@ Run the tool from the `rust` directory using `cargo`:
 
 ```bash
 cd rust
-# Default values (Alice, 1000, 1)
+# Default: built-in Planck transfer payload, signed by the standard test mnemonic's account 0
 cargo run -p ur_gen
 
-# Custom values: <address> <amount> <nonce>
-cargo run -p ur_gen -- "Bob" 5000 2
+# Custom values: <scale-payload-hex> [signer-ss58-address]
+cargo run -p ur_gen -- 0200007416... qzna4bUiEiZdXQpwvSQDmM2y9rBPyJRS9iNm85jPgicM76kA8
 ```
+
+The payload is wrapped in the v1 signing-request envelope
+(`{"v":1,"signer":...,"payload":"0x..."}`) shared with the companion apps, then UR-encoded.
 
 ## Output
 

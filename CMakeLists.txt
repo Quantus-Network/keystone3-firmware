@@ -401,7 +401,7 @@ else()
         set(CODESIGN_COMMAND codesign --force --options runtime --entitlements ${ENTITLEMENTS_FILE} --sign "${CODESIGN_IDENTITY}")
         add_custom_command(TARGET ${PROJECT_NAME}
             POST_BUILD
-            COMMAND ${CODESIGN_COMMAND} ${PROJECT_NAME}
+            COMMAND ${CODESIGN_COMMAND} $<TARGET_FILE:${PROJECT_NAME}>
             COMMENT "Signing the executable"
         )
     endif()

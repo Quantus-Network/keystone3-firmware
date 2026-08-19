@@ -14,6 +14,7 @@
 #include "user_utils.h"
 #include "gui_chain.h"
 #include "account_manager.h"
+#include "account_public_info.h"
 #include "gui_chain_components.h"
 #include "stdio.h"
 #include "fetch_sensitive_data_task.h"
@@ -30,6 +31,11 @@ static URParseMultiResult *g_urMultiResult = NULL;
 static bool g_isMulti = false;
 static void *g_parseResult = NULL;
 static DisplayQuantusTx *g_quantusData = NULL;
+// Account index to sign with, resolved by looking up the request's signer in the stored
+// address map. Defaults to 0 (pre-multi-account wallets); the Rust signer verification is
+// the authority, so a wrong resolution can only produce a refusal, never a wrong-key signature.
+static int32_t g_quantusSignAccountIndex = 0;
+static bool g_quantusSignAccountResolved = false;
 
 // Async checkphrase state for the transaction-signing screen. The shared address-to-checkphrase
 // LRU lives in Rust; this is only a bounded scheduler queue. Addresses remain owned by the parsed
@@ -102,9 +108,22 @@ void *GuiGetQuantusData(void)
     }
     g_parseResult = (void *)result;
     g_quantusData = (DisplayQuantusTx *)result->data;
-    
+
+    g_quantusSignAccountIndex = 0;
+    g_quantusSignAccountResolved = false;
+    if (g_quantusData && g_quantusData->signer) {
+        int32_t idx = GetQuantusStoredAddressIndex(g_quantusData->signer);
+        if (idx >= 0 && idx <= QUANTUS_ACCOUNT_INDEX_MAX) {
+            g_quantusSignAccountIndex = idx;
+            g_quantusSignAccountResolved = true;
+        }
+        printf("Quantus: signer %s resolved to account index %d (resolved=%d)\r\n",
+               g_quantusData->signer, g_quantusSignAccountIndex, g_quantusSignAccountResolved);
+    }
+
     if (g_quantusData) {
         printf("Quantus: Parse successful, displaying transaction:\r\n");
+        printf("Quantus:   Signer: %s\r\n", g_quantusData->signer ? g_quantusData->signer : "(null)");
         printf("Quantus:   To: %s\r\n", g_quantusData->to ? g_quantusData->to : "(null)");
         printf("Quantus:   Amount: %s\r\n", g_quantusData->amount ? g_quantusData->amount : "(null)");
         printf("Quantus:   Tip: %s\r\n", g_quantusData->tip ? g_quantusData->tip : "(null)");
@@ -240,6 +259,29 @@ void GetQuantusTip(void *indata, void *param, uint32_t maxLen)
     }
 }
 
+static void QuantusSenderTitle(char *buf, uint32_t maxLen)
+{
+    if (g_quantusSignAccountResolved) {
+        snprintf_s(buf, maxLen, "Sender (Account-%d)", g_quantusSignAccountIndex);
+    } else {
+        snprintf_s(buf, maxLen, "Sender");
+    }
+}
+
+void GetQuantusSenderLabel(void *indata, void *param, uint32_t maxLen)
+{
+    QuantusSenderTitle((char *)indata, maxLen);
+}
+
+void GetQuantusFromAddress(void *indata, void *param, uint32_t maxLen)
+{
+    if (g_quantusData && g_quantusData->signer) {
+        strcpy_s((char *)indata, maxLen, g_quantusData->signer);
+    } else {
+        strcpy_s((char *)indata, maxLen, "");
+    }
+}
+
 void GetQuantusToAddress(void *indata, void *param, uint32_t maxLen)
 {
     if (g_quantusData && g_quantusData->to) {
@@ -309,6 +351,10 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
         return GetQuantusValue;
     } else if (!strcmp(type, "GetQuantusTip")) {
         return GetQuantusTip;
+    } else if (!strcmp(type, "GetQuantusSenderLabel")) {
+        return GetQuantusSenderLabel;
+    } else if (!strcmp(type, "GetQuantusFromAddress")) {
+        return GetQuantusFromAddress;
     } else if (!strcmp(type, "GetQuantusToAddress")) {
         return GetQuantusToAddress;
     } else if (!strcmp(type, "GetQuantusToCheckphrase")) {
@@ -330,18 +376,36 @@ GetLabelDataFunc GuiQuantusTextFuncGet(char *type)
 // Plain transfers keep the curated card template; every other call type (multisig) renders through
 // GuiQuantusMultisigDetails instead. These gate the two layouts via the template "exist_func".
 
-// Custom container that replaces the transfer-screen checkphrase label. It creates an empty label
-// placeholder and kicks off a background job to compute the real checkphrase.
-void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData)
+static lv_obj_t *QuantusCreateCheckphraseLabel(lv_obj_t *parent)
 {
-    printf("Quantus: GuiQuantusCheckphraseContainer called\r\n");
-    (void)totalData;
     lv_obj_set_size(parent, 360, LV_SIZE_CONTENT);
     lv_obj_t *label = GuiCreateIllustrateLabel(parent, "");
     lv_obj_set_width(label, 360);
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_text_color(label, lv_color_hex(0x58E6DA), LV_PART_MAIN);
     lv_obj_align(label, LV_ALIGN_TOP_LEFT, 0, 8);
+    return label;
+}
+
+// Custom container for the transfer-screen sender checkphrase. Register only: the To-address
+// container renders after this one in the template and starts the dispatch for all labels.
+void GuiQuantusSenderCheckphraseContainer(lv_obj_t *parent, void *totalData)
+{
+    (void)totalData;
+    lv_obj_t *label = QuantusCreateCheckphraseLabel(parent);
+    if (g_quantusData == NULL || g_quantusData->signer == NULL || g_quantusData->signer[0] == '\0') {
+        return;
+    }
+    QuantusTxCheckphraseRegister(label, g_quantusData->signer);
+}
+
+// Custom container that replaces the transfer-screen checkphrase label. It creates an empty label
+// placeholder and kicks off a background job to compute the real checkphrase.
+void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData)
+{
+    printf("Quantus: GuiQuantusCheckphraseContainer called\r\n");
+    (void)totalData;
+    lv_obj_t *label = QuantusCreateCheckphraseLabel(parent);
 
     if (g_quantusData == NULL || g_quantusData->to == NULL || g_quantusData->to[0] == '\0') {
         return;
@@ -363,8 +427,25 @@ bool GetQuantusIsMultisig(void *indata, void *param)
     return tx != NULL && tx->is_multisig;
 }
 
-// Generic per-type view: a "Type" title followed by the ordered (label, value) rows the parser
-// produced. Used for multisig create/propose/approve/execute (display only, never blind-signed).
+// Append an async-filled checkphrase label to a transaction item view and register the address
+// whose checkphrase will fill it.
+static void QuantusAttachCheckphraseLabel(lv_obj_t *itemView, const char *address)
+{
+    uint32_t childCount = lv_obj_get_child_cnt(itemView);
+    lv_obj_t *prevChild = lv_obj_get_child(itemView, childCount - 1);
+    lv_obj_t *cpLabel = GuiCreateIllustrateLabel(itemView, "");
+    lv_obj_set_width(cpLabel, 360);
+    lv_label_set_long_mode(cpLabel, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_color(cpLabel, lv_color_hex(0x58E6DA), LV_PART_MAIN);
+    lv_obj_align_to(cpLabel, prevChild, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
+    lv_obj_update_layout(cpLabel);
+    lv_obj_set_height(itemView, lv_obj_get_height(itemView) + 12 + lv_obj_get_height(cpLabel));
+
+    QuantusTxCheckphraseRegister(cpLabel, address);
+}
+
+// Generic per-type view: sender and "Type" titles followed by the ordered (label, value) rows the
+// parser produced. Used for multisig create/propose/approve/execute (display only, never blind-signed).
 void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
 {
     DisplayQuantusTx *tx = (DisplayQuantusTx *)totalData;
@@ -373,6 +454,12 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
     lv_obj_add_flag(parent, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *lastView = NULL;
+    if (tx->signer != NULL && tx->signer[0] != '\0') {
+        char senderTitle[BUFFER_SIZE_32];
+        QuantusSenderTitle(senderTitle, sizeof(senderTitle));
+        lastView = CreateTransactionItemView(parent, senderTitle, tx->signer, lastView);
+        QuantusAttachCheckphraseLabel(lastView, tx->signer);
+    }
     if (tx->tx_type != NULL) {
         lastView = CreateTransactionItemView(parent, "Type", tx->tx_type, lastView);
     }
@@ -383,23 +470,13 @@ void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData)
         uint32_t count = labels->size < values->size ? labels->size : values->size;
         for (uint32_t i = 0; i < count; i++) {
             if (strcmp(labels->data[i], "Checkphrase") == 0 && lastView != NULL && i > 0) {
-                uint32_t childCount = lv_obj_get_child_cnt(lastView);
-                lv_obj_t *prevChild = lv_obj_get_child(lastView, childCount - 1);
-                lv_obj_t *cpLabel = GuiCreateIllustrateLabel(lastView, "");
-                lv_obj_set_width(cpLabel, 360);
-                lv_label_set_long_mode(cpLabel, LV_LABEL_LONG_WRAP);
-                lv_obj_set_style_text_color(cpLabel, lv_color_hex(0x58E6DA), LV_PART_MAIN);
-                lv_obj_align_to(cpLabel, prevChild, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
-                lv_obj_update_layout(cpLabel);
-                lv_obj_set_height(lastView, lv_obj_get_height(lastView) + 12 + lv_obj_get_height(cpLabel));
-
-                QuantusTxCheckphraseRegister(cpLabel, values->data[i - 1]);
+                QuantusAttachCheckphraseLabel(lastView, values->data[i - 1]);
                 continue;
             }
             lastView = CreateTransactionItemView(parent, labels->data[i], values->data[i], lastView);
         }
-        QuantusTxCheckphraseDispatchNext();
     }
+    QuantusTxCheckphraseDispatchNext();
 }
 
 // Called when a background checkphrase job completes. Updates the matching placeholder label if
@@ -611,7 +688,9 @@ UREncodeResult *GuiGetQuantusSignQrCodeData(void)
     do {
         char *passphrase = GetPassphrase(GetCurrentAccountIndex());
         char path[BUFFER_SIZE_64];
-        snprintf_s(path, sizeof(path), QUANTUS_HD_PATH_FMT, 0);
+        // Index resolved from the request's signer at parse time; quantus_sign_tx verifies the
+        // derived address against that signer, so a wrong index yields a refusal, not a signature.
+        snprintf_s(path, sizeof(path), QUANTUS_HD_PATH_FMT, (uint32_t)g_quantusSignAccountIndex);
 
         char *mnemonic = QuantusReconstructMnemonic();
         if (mnemonic == NULL) {
@@ -656,6 +735,8 @@ void FreeQuantusMemory(void)
     CHECK_FREE_UR_RESULT(g_urMultiResult, true);
     CHECK_FREE_PARSE_RESULT(g_parseResult);
     g_quantusData = NULL;
+    g_quantusSignAccountIndex = 0;
+    g_quantusSignAccountResolved = false;
     g_quantusTxCheckphrasePendingCount = 0;
     g_quantusTxCheckphraseNextDispatch = 0;
     g_quantusTxCheckphraseJobsInFlight = 0;

@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use crate::errors::{QuantusError, Result};
 use crate::structs::ParsedQuantusTx;
 use crate::parser::QuantusTx;
-use qp_rusty_crystals_dilithium::ml_dsa_87::Keypair;
+use qp_rusty_crystals_dilithium::{ml_dsa_87::Keypair, SensitiveBytes32};
 use qp_poseidon_core::hash_bytes;
 #[cfg(not(test))]
 use rust_tools::debug;
@@ -29,6 +29,7 @@ pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
     }
 }
 
+pub mod envelope;
 pub mod errors;
 pub mod structs;
 pub mod parser;
@@ -40,15 +41,13 @@ fn get_keys(mnemonic: &str, passphrase: &str, path: &str) -> Result<Keypair> {
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))
 }
 
+fn address_from_keys(keys: &Keypair) -> String {
+    let account_id = hash_bytes(&keys.public().to_bytes());
+    ss58::encode(&account_id, envelope::QUANTUS_SS58_PREFIX)
+}
+
 pub fn get_address(mnemonic: &str, passphrase: &str, path: &str) -> Result<String> {
-    let keys = get_keys(mnemonic, passphrase, path)?;
-        
-    let pub_key_bytes = keys.public().to_bytes();
-    
-    let account_id = hash_bytes(&pub_key_bytes);
-    
-    // Use custom ss58 encoding
-    Ok(ss58::encode(&account_id, 189))
+    Ok(address_from_keys(&get_keys(mnemonic, passphrase, path)?))
 }
 
 fn format_amount(amount: u128) -> String {
@@ -162,7 +161,7 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
     }
 }
 
-fn build_parsed_tx(parsed: &parser::ParsedPayload, with_checkphrase: bool) -> ParsedQuantusTx {
+fn build_parsed_tx(parsed: &parser::ParsedPayload, signer: &str, with_checkphrase: bool) -> ParsedQuantusTx {
     let tx = &parsed.call;
     let tx_type = tx_type_title(tx).to_string();
     let nonce = parsed.extensions.nonce.to_string();
@@ -184,6 +183,7 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload, with_checkphrase: bool) -> Pa
         return ParsedQuantusTx::new(
             tx_type,
             false,
+            signer.to_string(),
             to.clone(),
             to_checkphrase,
             format_amount(*amount),
@@ -210,6 +210,7 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload, with_checkphrase: bool) -> Pa
     ParsedQuantusTx::new(
         tx_type,
         true,
+        signer.to_string(),
         String::new(),
         String::new(),
         String::new(),
@@ -224,23 +225,24 @@ fn build_parsed_tx(parsed: &parser::ParsedPayload, with_checkphrase: bool) -> Pa
     )
 }
 
-pub fn parse_quantus_tx(data: &[u8]) -> Result<ParsedQuantusTx> {
-    parse_quantus_tx_impl(data, true)
+pub fn parse_request(data: &[u8]) -> Result<ParsedQuantusTx> {
+    parse_request_impl(data, true)
 }
 
-pub fn parse_quantus_tx_light(data: &[u8]) -> Result<ParsedQuantusTx> {
-    parse_quantus_tx_impl(data, false)
+pub fn parse_request_light(data: &[u8]) -> Result<ParsedQuantusTx> {
+    parse_request_impl(data, false)
 }
 
-fn parse_quantus_tx_impl(data: &[u8], with_checkphrase: bool) -> Result<ParsedQuantusTx> {
+fn parse_request_impl(data: &[u8], with_checkphrase: bool) -> Result<ParsedQuantusTx> {
     #[cfg(not(test))]
-    debug!(alloc::format!("parse_quantus_tx input len: {}", data.len()));
+    debug!(alloc::format!("parse_request input len: {}", data.len()));
 
-    match parser::parse_payload(data) {
+    let request = envelope::decode(data)?;
+    match parser::parse_payload(&request.payload) {
         Ok(parsed) => {
             #[cfg(not(test))]
             debug!(alloc::format!("parse_payload success: {}", parsed.call));
-            Ok(build_parsed_tx(&parsed, with_checkphrase))
+            Ok(build_parsed_tx(&parsed, &request.signer, with_checkphrase))
         }
         Err(_e) => {
             #[cfg(not(test))]
@@ -248,6 +250,36 @@ fn parse_quantus_tx_impl(data: &[u8], with_checkphrase: bool) -> Result<ParsedQu
             Err(QuantusError::InvalidTransaction)
         }
     }
+}
+
+pub fn check_request(data: &[u8]) -> Result<()> {
+    let request = envelope::decode(data)?;
+    parser::parse_payload(&request.payload)
+        .map(|_| ())
+        .map_err(|_e| {
+            #[cfg(not(test))]
+            debug!(alloc::format!("check_request payload parse failed: {}", _e));
+            QuantusError::InvalidTransaction
+        })
+}
+
+/// Decode the signing-request envelope, derive the key at `path`, refuse unless the derived
+/// address is exactly the envelope's signer, then sign the payload. The address check is the
+/// authority on account selection: the caller's `path` index is only ever a lookup hint.
+pub fn sign_request(
+    data: &[u8],
+    path: &str,
+    mnemonic: &str,
+    passphrase: &str,
+    hedge: [u8; 32],
+) -> Result<Vec<u8>> {
+    let request = envelope::decode(data)?;
+    parser::parse_payload(&request.payload).map_err(|_| QuantusError::InvalidTransaction)?;
+    let keys = get_keys(mnemonic, passphrase, path)?;
+    if address_from_keys(&keys) != request.signer {
+        return Err(QuantusError::SignerMismatch(request.signer));
+    }
+    sign_payload_with_keys(&keys, request.payload, hedge)
 }
 
 /// `hedge` is fresh device randomness for FIPS 204 hedged signing: it is folded into the
@@ -260,13 +292,19 @@ pub fn sign_raw_tx(
     passphrase: &str,
     hedge: [u8; 32],
 ) -> Result<Vec<u8>> {
-    #[cfg(not(test))]
-    debug!(alloc::format!("sign_raw_tx payload len: {}", payload_to_sign.len()));
-
-    // 1. Derive keys
     let keys = get_keys(mnemonic, passphrase, path)?;
+    sign_payload_with_keys(&keys, payload_to_sign, hedge)
+}
 
-    // 2. Handle payload > 256 bytes
+fn sign_payload_with_keys(
+    keys: &Keypair,
+    payload_to_sign: Vec<u8>,
+    mut hedge: [u8; 32],
+) -> Result<Vec<u8>> {
+    #[cfg(not(test))]
+    debug!(alloc::format!("sign payload len: {}", payload_to_sign.len()));
+
+    // Handle payload > 256 bytes
     let msg_to_sign = if payload_to_sign.len() > 256 {
         #[cfg(not(test))]
         debug!("Payload > 256 bytes, hashing with Blake2b-256".to_string());
@@ -275,14 +313,14 @@ pub fn sign_raw_tx(
         payload_to_sign
     };
 
-    // 3. Sign
-    let signature = keys.sign(&msg_to_sign, None, Some(hedge))
+    let hedge = SensitiveBytes32::new(&mut hedge);
+    let signature = keys.sign(&msg_to_sign, None, Some(&hedge))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
     #[cfg(not(test))]
     debug!(alloc::format!("Quantus signature hash: {}", hex::encode(blake2b_256(&signature))));
 
-    // 4. Concatenate Signature + Public Key
+    // Concatenate Signature + Public Key
     let mut signature_with_pubkey = signature.to_vec();
     signature_with_pubkey.extend_from_slice(&keys.public().to_bytes());
 
@@ -290,17 +328,6 @@ pub fn sign_raw_tx(
     debug!(alloc::format!("signature_with_pubkey len: {}", signature_with_pubkey.len()));
 
     Ok(signature_with_pubkey)
-}
-
-pub fn check_raw_tx(data: Vec<u8>) -> Result<()> {
-    match parser::parse_payload(&data) {
-        Ok(_) => Ok(()),
-        Err(_e) => {
-            #[cfg(not(test))]
-            debug!(alloc::format!("check_raw_tx failed: {}", _e));
-            Err(QuantusError::InvalidTransaction)
-        }
-    }
 }
 
 #[cfg(test)]

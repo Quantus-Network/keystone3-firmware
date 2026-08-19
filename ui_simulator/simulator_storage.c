@@ -60,6 +60,13 @@ SimulatorFlashPath g_simulatorPathMap[] = {
     {SIMULATOR_USER3_SECRET_ADDR, PC_SIMULATOR_PATH "/user3_secret.json", StorageGetData, StorageSetData},
     {SPI_FLASH_RSA_USER3_DATA, PC_SIMULATOR_PATH "/user3_rsa.json", StorageGetData, StorageSetData},
 
+    {SPI_FLASH_ADDR_QUANTUS_DATA, PC_SIMULATOR_PATH "/quantus_addr1.json", StorageGetDataSize, StorageSetDataSize},
+    {SPI_FLASH_ADDR_QUANTUS_DATA + 4, PC_SIMULATOR_PATH "/quantus_addr1.json", StorageGetData, StorageSetData},
+    {SPI_FLASH_ADDR_QUANTUS_DATA + SPI_FLASH_SIZE_QUANTUS_DATA, PC_SIMULATOR_PATH "/quantus_addr2.json", StorageGetDataSize, StorageSetDataSize},
+    {SPI_FLASH_ADDR_QUANTUS_DATA + SPI_FLASH_SIZE_QUANTUS_DATA + 4, PC_SIMULATOR_PATH "/quantus_addr2.json", StorageGetData, StorageSetData},
+    {SPI_FLASH_ADDR_QUANTUS_DATA + 2 * SPI_FLASH_SIZE_QUANTUS_DATA, PC_SIMULATOR_PATH "/quantus_addr3.json", StorageGetDataSize, StorageSetDataSize},
+    {SPI_FLASH_ADDR_QUANTUS_DATA + 2 * SPI_FLASH_SIZE_QUANTUS_DATA + 4, PC_SIMULATOR_PATH "/quantus_addr3.json", StorageGetData, StorageSetData},
+
     {DS28S60_DATA_ADDR, PC_SIMULATOR_PATH "/ds28s60.json", StorageGetData, StorageSetData},
     {ATECC608B_DATA_ADDR, PC_SIMULATOR_PATH "/atecc608b.json", StorageGetData, StorageSetData},
 };

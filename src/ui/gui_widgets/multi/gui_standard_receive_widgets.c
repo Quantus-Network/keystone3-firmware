@@ -1045,6 +1045,7 @@ void GuiStandardReceiveQuantusAddressReady(void)
     GuiPendingHintBoxRemove();
     if (g_quantusAsyncOk) {
         QuantusAddrCachePut(g_quantusAsyncIndex, g_quantusAsyncAddr);
+        SetQuantusStoredAddress(g_quantusAsyncIndex, g_quantusAsyncAddr);
     } else {
         printf("ERROR: Quantus async address derivation failed for index %u\n", g_quantusAsyncIndex);
     }
@@ -1145,6 +1146,9 @@ static int GetMaxAddressIndex(void)
     if (g_chainCard == HOME_WALLET_CARD_XRP) {
         return 200;
     }
+    if (g_chainCard == HOME_WALLET_CARD_QUANTUS) {
+        return QUANTUS_ACCOUNT_INDEX_MAX;
+    }
 #endif
     return GENERAL_ADDRESS_INDEX_MAX;
 }
@@ -1219,6 +1223,7 @@ static bool IsAccountSwitchable()
     case HOME_WALLET_CARD_APT:
     case HOME_WALLET_CARD_XRP:
     case HOME_WALLET_CARD_XLM:
+    case HOME_WALLET_CARD_QUANTUS:
         return true;
 
     default:
@@ -1280,17 +1285,16 @@ static void ModelGetAddress(uint32_t index, AddressDataItem_t *item)
         result = tron_get_address(hdPath, xPub);
         break;
     case HOME_WALLET_CARD_QUANTUS: {
+        // Never derive here: this runs on the UI thread (account switch list) and ML-DSA
+        // derivation takes ~10s. Fall back to the persisted store so the list survives
+        // reboots; never-derived indexes render blank. The receive QR itself never comes
+        // from here — selecting an account goes through RefreshQrCode's async derivation.
         char addr[QUANTUS_ADDRESS_MAX_LEN];
-        if (QuantusAddrCacheGet(index, addr, sizeof(addr))) {
-            item->index = index;
+        item->index = index;
+        snprintf_s(item->path, sizeof(item->path), QUANTUS_HD_PATH_FMT, index);
+        if (QuantusAddrCacheGet(index, addr, sizeof(addr)) ||
+                GetQuantusStoredAddress(index, addr, sizeof(addr))) {
             strcpy_s(item->address, ADDRESS_MAX_LEN, addr);
-            snprintf_s(item->path, sizeof(item->path), QUANTUS_HD_PATH_FMT, index);
-            return;
-        }
-        if (DeriveQuantusAddress(index, addr, sizeof(addr), item->path, sizeof(item->path))) {
-            item->index = index;
-            strcpy_s(item->address, ADDRESS_MAX_LEN, addr);
-            QuantusAddrCachePut(index, addr);
         }
         return;
     }

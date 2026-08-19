@@ -5,9 +5,14 @@
 #include "lvgl.h"
 
 // Single source of truth for the Quantus HD path template (coin type 189189, %u = account
-// index). Receive and signing must derive from the same template so they can never diverge;
-// signing uses index 0, matching the only index the receive UI exposes (audit M-2).
+// index). Receive and signing must derive from the same template so they can never diverge
+// (audit M-2). Signing picks the index by looking up the sign request's signer address in
+// the stored address map, then verifies the derived address equals that signer before
+// producing a signature, so a wrong or tampered lookup can only cause a refusal.
 #define QUANTUS_HD_PATH_FMT "m/44'/189189'/%u'/0'/0'"
+
+// Highest selectable account index (256 accounts, matching the companion cold wallet).
+#define QUANTUS_ACCOUNT_INDEX_MAX 255
 
 // Quantus addresses are SS58 (prefix 189): 36 payload bytes encode to about 51 base58
 // characters, including the terminator, so 64 bytes leaves explicit headroom.
@@ -24,6 +29,7 @@ bool GetQuantusIsTransfer(void *indata, void *param);
 bool GetQuantusIsMultisig(void *indata, void *param);
 void GuiQuantusMultisigDetails(lv_obj_t *parent, void *totalData);
 void GuiQuantusCheckphraseContainer(lv_obj_t *parent, void *totalData);
+void GuiQuantusSenderCheckphraseContainer(lv_obj_t *parent, void *totalData);
 void GuiQuantusTxCheckphraseReady(void *param);
 void FreeQuantusMemory(void);
 

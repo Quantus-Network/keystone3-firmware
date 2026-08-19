@@ -5,6 +5,7 @@ use app_utils::impl_public_struct;
 impl_public_struct!(ParsedQuantusTx {
     tx_type: String,
     is_multisig: bool,
+    signer: String,
     to: String,
     to_checkphrase: String,
     amount: String,

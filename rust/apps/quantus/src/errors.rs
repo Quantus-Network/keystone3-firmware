@@ -5,6 +5,10 @@ use thiserror::Error;
 pub enum QuantusError {
     #[error("Invalid transaction json")]
     InvalidTransaction,
+    #[error("Invalid signing request: {0}")]
+    InvalidEnvelope(String),
+    #[error("This transaction is for {0}, which this wallet does not hold")]
+    SignerMismatch(String),
     #[error("Sign failure: {0}")]
     SignFailure(String),
 }

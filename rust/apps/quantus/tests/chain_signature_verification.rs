@@ -6,7 +6,7 @@
 
 use app_quantus::parser::{self, QuantusTx};
 use app_quantus::{get_address, sign_raw_tx};
-use qp_dilithium_crypto::types::{DilithiumSignatureScheme, DilithiumSignatureWithPublic};
+use qp_dilithium_crypto::types::{Dilithium87SignatureWithPublic, DilithiumSignatureScheme};
 use qp_dilithium_crypto::DilithiumSigner;
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::AccountId32;
@@ -31,9 +31,9 @@ fn device_sign(payload: &[u8]) -> (DilithiumSignatureScheme, AccountId32) {
     let sig_with_pubkey =
         sign_raw_tx(payload.to_vec(), PATH, MNEMONIC, "", [0x42; 32]).expect("sign");
     let sig_with_public =
-        DilithiumSignatureWithPublic::from_bytes(&sig_with_pubkey).expect("sig||pubkey layout");
-    let signer = DilithiumSigner::Dilithium(sig_with_public.public()).into_account();
-    (DilithiumSignatureScheme::Dilithium(sig_with_public), signer)
+        Dilithium87SignatureWithPublic::from_bytes(&sig_with_pubkey).expect("sig||pubkey layout");
+    let signer = DilithiumSigner::Dilithium87(sig_with_public.public()).into_account();
+    (DilithiumSignatureScheme::Dilithium87(sig_with_public), signer)
 }
 
 /// The verification a Quantus node runs on a signed extrinsic: sp_runtime's `SignedPayload`
@@ -97,4 +97,56 @@ fn device_address_is_the_chain_account_identity() {
 
     let device_address = get_address(MNEMONIC, "", PATH).expect("address");
     assert_eq!(device_address, parser::bytes_to_ss58(signer_bytes));
+}
+
+const ACCOUNT_PATH: &str = "m/44'/189189'/0'/0'/0'";
+
+fn envelope_for(signer: &str) -> String {
+    format!(r#"{{"v":1,"signer":"{}","payload":"0x{}"}}"#, signer, SHORT_PAYLOAD)
+}
+
+#[test]
+fn sign_request_signs_only_for_the_envelope_signer() {
+    use app_quantus::errors::QuantusError;
+
+    let payload = hex::decode(SHORT_PAYLOAD).unwrap();
+    let signer = get_address(MNEMONIC, "", ACCOUNT_PATH).expect("address");
+    let envelope = envelope_for(&signer);
+
+    let sig_with_pubkey =
+        app_quantus::sign_request(envelope.as_bytes(), ACCOUNT_PATH, MNEMONIC, "", [0x42; 32])
+            .expect("sign");
+    let sig_with_public =
+        Dilithium87SignatureWithPublic::from_bytes(&sig_with_pubkey).expect("sig||pubkey layout");
+    let account = DilithiumSigner::Dilithium87(sig_with_public.public()).into_account();
+    let account_bytes: &[u8; 32] = account.as_ref();
+    assert_eq!(parser::bytes_to_ss58(account_bytes), signer);
+    assert!(chain_verifies(
+        &payload,
+        &DilithiumSignatureScheme::Dilithium87(sig_with_public),
+        &account
+    ));
+
+    // The same envelope signed at a different account index must be refused: the derived
+    // address no longer matches the envelope's signer.
+    let err = app_quantus::sign_request(
+        envelope.as_bytes(),
+        "m/44'/189189'/1'/0'/0'",
+        MNEMONIC,
+        "",
+        [0x42; 32],
+    )
+    .unwrap_err();
+    assert!(matches!(err, QuantusError::SignerMismatch(_)), "{:?}", err);
+}
+
+#[test]
+fn parse_request_exposes_the_envelope_signer() {
+    let signer = get_address(MNEMONIC, "", ACCOUNT_PATH).expect("address");
+    let parsed = app_quantus::parse_request_light(envelope_for(&signer).as_bytes()).expect("parse");
+    assert_eq!(parsed.get_signer(), signer);
+    assert!(!parsed.get_is_multisig());
+
+    assert!(app_quantus::check_request(envelope_for(&signer).as_bytes()).is_ok());
+    assert!(app_quantus::check_request(&hex::decode(SHORT_PAYLOAD).unwrap()).is_err());
 }

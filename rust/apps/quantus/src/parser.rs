@@ -7,7 +7,7 @@ use parity_scale_codec::{Decode, Error as CodecError, Input};
 use parity_scale_codec_derive::Decode as DeriveDecode;
 
 /// Hard cap on the raw signing payload; every supported call is far below this.
-const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
+pub const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
 /// Maximum nesting of multisig `propose` inner calls (top-level call is depth 0).
 const MAX_CALL_DEPTH: u32 = 2;
 /// Minimum reversible-transfer delay, matching the on-chain `MinDelayPeriodMoment` (12 s);

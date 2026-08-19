@@ -2,22 +2,18 @@ use alloc::boxed::Box;
 use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::str::FromStr;
-use app_quantus::{check_raw_tx, sign_raw_tx, parse_quantus_tx, parse_quantus_tx_light};
+use app_quantus::{check_request, parse_request, parse_request_light, sign_request};
 use cty::{c_char, c_int, c_void};
 use ur_registry::bytes::Bytes;
 use ur_registry::traits::RegistryItem;
 use hex;
 
-use crate::common::errors::{ErrorCodes, RustCError};
+use crate::common::errors::RustCError;
 use crate::common::structs::{TransactionCheckResult, TransactionParseResult, SimpleResponse};
 use crate::common::types::{PtrBytes, PtrString, PtrT, PtrUR, Ptr};
-use crate::common::ur::{UREncodeResult, ViewType, FRAGMENT_MAX_LENGTH_DEFAULT};
-use ur_parse_lib::keystone_ur_encoder;
+use crate::common::ur::{UREncodeResult, FRAGMENT_MAX_LENGTH_DEFAULT};
 use crate::common::utils::{convert_c_char, recover_c_char};
-use crate::{
-    extract_array, extract_ptr_with_type, impl_c_ptr, impl_new_error,
-    impl_response, make_free_method, free_str_ptr
-};
+use crate::{extract_array, extract_ptr_with_type, impl_c_ptr, make_free_method};
 use crate::common::free::Free;
 use crate::quantus::structs::DisplayQuantusTx;
 use zeroize::Zeroize;
@@ -82,7 +78,7 @@ pub unsafe extern "C" fn quantus_sign_tx(
     let bytes_ur = extract_ptr_with_type!(data, Bytes);
     let raw_bytes = bytes_ur.get_bytes();
 
-    match sign_raw_tx(raw_bytes, &path, &mnemonic, &passphrase, hedge) {
+    match sign_request(&raw_bytes, &path, &mnemonic, &passphrase, hedge) {
         Ok(sign_result) => {
             match encode_bytes(&sign_result) {
                 Ok(ur_parts) => {
@@ -147,7 +143,7 @@ pub unsafe extern "C" fn quantus_check_tx(
     let bytes_ur = extract_ptr_with_type!(data, Bytes);
     let raw_bytes = bytes_ur.get_bytes();
 
-    match check_raw_tx(raw_bytes) {
+    match check_request(&raw_bytes) {
         Ok(_) => TransactionCheckResult::new().c_ptr(),
         Err(e) => TransactionCheckResult::from(e).c_ptr(),
     }
@@ -163,9 +159,10 @@ pub unsafe extern "C" fn quantus_parse_tx(data: PtrUR) -> Ptr<TransactionParseRe
     rust_tools::debug!(alloc::format!("Quantus: Encoded transaction (hex): {}", hex::encode(&raw_bytes)));
     rust_tools::debug!(alloc::format!("Quantus: Encoded transaction length: {} bytes", raw_bytes.len()));
 
-    match parse_quantus_tx(raw_bytes.as_slice()) {
+    match parse_request(raw_bytes.as_slice()) {
         Ok(tx) => {
             rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully"));
+            rust_tools::debug!(alloc::format!("Quantus: Signer: {}", tx.get_signer()));
             rust_tools::debug!(alloc::format!("Quantus: Type: {}", tx.get_tx_type()));
             rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
             rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));
@@ -194,9 +191,10 @@ pub unsafe extern "C" fn quantus_parse_tx_light(data: PtrUR) -> Ptr<TransactionP
     rust_tools::debug!(alloc::format!("Quantus: Encoded transaction (hex): {}", hex::encode(&raw_bytes)));
     rust_tools::debug!(alloc::format!("Quantus: Encoded transaction length: {} bytes", raw_bytes.len()));
 
-    match parse_quantus_tx_light(raw_bytes.as_slice()) {
+    match parse_request_light(raw_bytes.as_slice()) {
         Ok(tx) => {
             rust_tools::debug!(alloc::format!("Quantus: Transaction decoded successfully (light)"));
+            rust_tools::debug!(alloc::format!("Quantus: Signer: {}", tx.get_signer()));
             rust_tools::debug!(alloc::format!("Quantus: Type: {}", tx.get_tx_type()));
             rust_tools::debug!(alloc::format!("Quantus: To: {}", tx.get_to()));
             rust_tools::debug!(alloc::format!("Quantus: Amount: {}", tx.get_amount()));
@@ -349,16 +347,29 @@ mod tests {
         }
     }
 
+    /// Planck transfer_keep_alive signing payload with full extensions (same vector as the
+    /// chain conformance tests); sign_request refuses anything the parser cannot display.
+    const TEST_PAYLOAD_HEX: &str = "0200007416854906f03a9dff66e3270a736c44e15970ac03a638471523a03069f276ca0700e8764817550100000083000000020000004901bf5c57fd3f9e726af399c763de6670dbdb115a91c0237e173f16eef65e725a77ae1c95817ee664cf733fafa7baa8e6244b396a54e57a5bc414b24c52800600";
+
     #[test]
     fn test_quantus_sign_tx_encode_decode_roundtrip() {
-        let test_payload = b"test payload for signing";
+        use app_quantus::sign_raw_tx;
+
         let test_mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
         let test_passphrase = "";
         let test_path = "m/44'/189189'/0'/0'/0'";
         // Master fingerprint of the test mnemonic with empty passphrase (BIP32 reference value).
         let mfp = [0x73u8, 0xc5, 0xda, 0x0a];
-        
-        let bytes_ur = Bytes::new(test_payload.to_vec());
+
+        let test_payload = hex::decode(TEST_PAYLOAD_HEX).unwrap();
+        let signer = app_quantus::get_address(test_mnemonic, test_passphrase, test_path)
+            .expect("test signer derivation");
+        let envelope = alloc::format!(
+            r#"{{"v":1,"signer":"{}","payload":"0x{}"}}"#,
+            signer, TEST_PAYLOAD_HEX
+        );
+
+        let bytes_ur = Bytes::new(envelope.into_bytes());
         let bytes_ptr = Box::into_raw(Box::new(bytes_ur)) as PtrUR;
         
         let mnemonic_cstr = cstr_core::CString::new(test_mnemonic).unwrap();
@@ -395,13 +406,13 @@ mod tests {
         // Hedged signing draws fresh randomness per call, so signature bytes are not
         // reproducible; check the public key and cryptographic validity instead.
         let expected_signature = sign_raw_tx(
-            test_payload.to_vec(),
+            test_payload.clone(),
             test_path,
             test_mnemonic,
             test_passphrase,
             [0x42; 32]
         ).expect("Signing should succeed");
-        
+
         use qp_rusty_crystals_dilithium::ml_dsa_87::{PublicKey, SIGNBYTES};
         assert_eq!(decoded_signature.len(), expected_signature.len(),
             "Decoded signature should have the sig||pubkey length");
@@ -409,7 +420,7 @@ mod tests {
             "Public key portion should match the derived key");
         let public_key = PublicKey::from_bytes(&decoded_signature[SIGNBYTES..])
             .expect("Public key should deserialize");
-        assert!(public_key.verify(test_payload, &decoded_signature[..SIGNBYTES], None),
+        assert!(public_key.verify(&test_payload, &decoded_signature[..SIGNBYTES], None),
             "Signature should verify under the embedded public key");
         
         unsafe {

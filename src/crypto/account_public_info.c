@@ -1802,6 +1802,199 @@ void SetAccountIndex(const char* chainName, uint32_t index)
     }
 }
 
+#ifdef WEB3_VERSION
+// Quantus derived-address store: a dedicated 32KB flash region per wallet slot holding
+// {"mfp":"<hex>","addresses":{"<index>":"<ss58>", ...}}. The mfp binds the store to the
+// wallet identity, so replacing the seed in a slot makes the old store read as empty.
+// Passphrase (hidden wallet) sessions use a RAM-only store and never touch flash.
+#define QUANTUS_ADDR_MIN_LEN 40
+
+static cJSON *g_quantusTempAddrStore = NULL;
+
+static void QuantusMfpHex(char *out, uint32_t maxLen)
+{
+    uint8_t mfp[4];
+    GetMasterFingerPrint(mfp);
+    snprintf_s(out, maxLen, "%02x%02x%02x%02x", mfp[0], mfp[1], mfp[2], mfp[3]);
+}
+
+static uint32_t QuantusAddrStoreFlashAddr(void)
+{
+    uint8_t account = GetCurrentAccountIndex();
+    ASSERT(account < 3);
+    return SPI_FLASH_ADDR_QUANTUS_DATA + account * SPI_FLASH_SIZE_QUANTUS_DATA;
+}
+
+static cJSON *QuantusAddrStoreNew(const char *mfpHex)
+{
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddItemToObject(root, "mfp", cJSON_CreateString(mfpHex));
+    cJSON_AddItemToObject(root, "addresses", cJSON_CreateObject());
+    return root;
+}
+
+static bool QuantusAddrStoreMfpMatches(cJSON *root, const char *mfpHex)
+{
+    cJSON *mfp = cJSON_GetObjectItem(root, "mfp");
+    return mfp != NULL && mfp->valuestring != NULL && strcmp(mfp->valuestring, mfpHex) == 0;
+}
+
+// Load the store for the current wallet identity; absent, foreign, or corrupt data reads as
+// empty. The caller must release the result via QuantusAddrStoreRelease.
+static cJSON *QuantusAddrStoreLoad(void)
+{
+    char mfpHex[9];
+    QuantusMfpHex(mfpHex, sizeof(mfpHex));
+
+    if (PassphraseExist(GetCurrentAccountIndex())) {
+        if (g_quantusTempAddrStore != NULL &&
+                !QuantusAddrStoreMfpMatches(g_quantusTempAddrStore, mfpHex)) {
+            cJSON_Delete(g_quantusTempAddrStore);
+            g_quantusTempAddrStore = NULL;
+        }
+        if (g_quantusTempAddrStore == NULL) {
+            g_quantusTempAddrStore = QuantusAddrStoreNew(mfpHex);
+        }
+        return g_quantusTempAddrStore;
+    }
+    if (g_quantusTempAddrStore != NULL) {
+        cJSON_Delete(g_quantusTempAddrStore);
+        g_quantusTempAddrStore = NULL;
+    }
+
+    uint32_t size = 0;
+    uint32_t addr = QuantusAddrStoreFlashAddr();
+    cJSON *root = NULL;
+    if (Gd25FlashReadBuffer(addr, (uint8_t *)&size, sizeof(size)) == sizeof(size) &&
+            size > 0 && size <= SPI_FLASH_SIZE_QUANTUS_DATA - 4) {
+        char *jsonString = SRAM_MALLOC(size + 1);
+        if (Gd25FlashReadBuffer(addr + 4, (uint8_t *)jsonString, size) == (int32_t)size) {
+            jsonString[size] = 0;
+            root = cJSON_Parse(jsonString);
+        }
+        SRAM_FREE(jsonString);
+    }
+    if (root != NULL && !QuantusAddrStoreMfpMatches(root, mfpHex)) {
+        cJSON_Delete(root);
+        root = NULL;
+    }
+    return root != NULL ? root : QuantusAddrStoreNew(mfpHex);
+}
+
+static void QuantusAddrStoreRelease(cJSON *root)
+{
+    if (root != g_quantusTempAddrStore) {
+        cJSON_Delete(root);
+    }
+}
+
+static void QuantusAddrStoreWrite(cJSON *root)
+{
+    if (PassphraseExist(GetCurrentAccountIndex())) {
+        return;
+    }
+    char *jsonString = cJSON_PrintBuffered(root, 1024, false);
+    if (jsonString == NULL) {
+        printf("ERROR: quantus address store serialization failed\r\n");
+        return;
+    }
+    RemoveFormatChar(jsonString);
+    uint32_t size = strlen(jsonString);
+    if (size > SPI_FLASH_SIZE_QUANTUS_DATA - 4) {
+        printf("ERROR: quantus address store too large (%u bytes), not written\r\n", size);
+        EXT_FREE(jsonString);
+        return;
+    }
+    uint32_t addr = QuantusAddrStoreFlashAddr();
+    for (uint32_t eraseAddr = addr; eraseAddr < addr + SPI_FLASH_SIZE_QUANTUS_DATA;
+            eraseAddr += GD25QXX_SECTOR_SIZE) {
+        Gd25FlashSectorErase(eraseAddr);
+    }
+    Gd25FlashWriteBuffer(addr, (uint8_t *)&size, 4);
+    Gd25FlashWriteBuffer(addr + 4, (uint8_t *)jsonString, size);
+    EXT_FREE(jsonString);
+}
+
+void SetQuantusStoredAddress(uint32_t index, const char *address)
+{
+    if (address == NULL || strnlen_s(address, BUFFER_SIZE_64) < QUANTUS_ADDR_MIN_LEN) {
+        printf("ERROR: SetQuantusStoredAddress invalid address for index %u\r\n", index);
+        return;
+    }
+    char key[12];
+    snprintf_s(key, sizeof(key), "%u", index);
+
+    cJSON *root = QuantusAddrStoreLoad();
+    cJSON *map = cJSON_GetObjectItem(root, "addresses");
+    cJSON *existing = cJSON_GetObjectItem(map, key);
+    if (existing != NULL && existing->valuestring != NULL &&
+            strcmp(existing->valuestring, address) == 0) {
+        QuantusAddrStoreRelease(root);
+        return;
+    }
+    if (existing != NULL) {
+        // A freshly derived address is authoritative; a differing stored one means flash
+        // tampering or corruption.
+        printf("ERROR: quantus stored address for index %u differs from derived, replacing\r\n", index);
+        cJSON_ReplaceItemInObject(map, key, cJSON_CreateString(address));
+    } else {
+        cJSON_AddItemToObject(map, key, cJSON_CreateString(address));
+    }
+    QuantusAddrStoreWrite(root);
+    QuantusAddrStoreRelease(root);
+}
+
+bool GetQuantusStoredAddress(uint32_t index, char *outAddress, uint32_t maxLen)
+{
+    char key[12];
+    snprintf_s(key, sizeof(key), "%u", index);
+
+    bool found = false;
+    cJSON *root = QuantusAddrStoreLoad();
+    cJSON *entry = cJSON_GetObjectItem(cJSON_GetObjectItem(root, "addresses"), key);
+    if (entry != NULL && entry->valuestring != NULL) {
+        strcpy_s(outAddress, maxLen, entry->valuestring);
+        found = true;
+    }
+    QuantusAddrStoreRelease(root);
+    return found;
+}
+
+int32_t GetQuantusStoredAddressIndex(const char *address)
+{
+    if (address == NULL || address[0] == '\0') {
+        return -1;
+    }
+    int32_t found = -1;
+    cJSON *root = QuantusAddrStoreLoad();
+    cJSON *map = cJSON_GetObjectItem(root, "addresses");
+    cJSON *entry = NULL;
+    cJSON_ArrayForEach(entry, map) {
+        if (entry->string != NULL && entry->valuestring != NULL &&
+                strcmp(address, entry->valuestring) == 0) {
+            found = (int32_t)strtoul(entry->string, NULL, 10);
+            break;
+        }
+    }
+    QuantusAddrStoreRelease(root);
+    return found;
+}
+
+void ClearQuantusStoredAddresses(uint8_t accountIndex)
+{
+    ASSERT(accountIndex < 3);
+    if (g_quantusTempAddrStore != NULL) {
+        cJSON_Delete(g_quantusTempAddrStore);
+        g_quantusTempAddrStore = NULL;
+    }
+    uint32_t addr = SPI_FLASH_ADDR_QUANTUS_DATA + accountIndex * SPI_FLASH_SIZE_QUANTUS_DATA;
+    for (uint32_t eraseAddr = addr; eraseAddr < addr + SPI_FLASH_SIZE_QUANTUS_DATA;
+            eraseAddr += GD25QXX_SECTOR_SIZE) {
+        Gd25FlashSectorErase(eraseAddr);
+    }
+}
+#endif
+
 uint32_t GetConnectWalletPathIndex(const char* walletName)
 {
     char name[BUFFER_SIZE_32];
@@ -2002,15 +2195,22 @@ static void WriteJsonToFlash(uint32_t addr, cJSON *rootJson)
         return;
     }
 
-    for (eraseAddr = addr; eraseAddr < addr + SPI_FLASH_SIZE_USER1_MUTABLE_DATA; eraseAddr += GD25QXX_SECTOR_SIZE) {
-        Gd25FlashSectorErase(eraseAddr);
-    }
+    // Serialize and size-check before erasing: cJSON_PrintBuffered's size is only a
+    // prebuffer hint, and writing past the region would corrupt the next wallet's data.
     jsonString = cJSON_PrintBuffered(rootJson, SPI_FLASH_SIZE_USER1_MUTABLE_DATA - 4, false);
     if (jsonString == NULL) {
         return;
     }
     RemoveFormatChar(jsonString);
     size = strlen(jsonString);
+    if (size > SPI_FLASH_SIZE_USER1_MUTABLE_DATA - 4) {
+        printf("ERROR: mutable account json too large (%u bytes), not written\r\n", size);
+        EXT_FREE(jsonString);
+        return;
+    }
+    for (eraseAddr = addr; eraseAddr < addr + SPI_FLASH_SIZE_USER1_MUTABLE_DATA; eraseAddr += GD25QXX_SECTOR_SIZE) {
+        Gd25FlashSectorErase(eraseAddr);
+    }
     Gd25FlashWriteBuffer(addr, (uint8_t *)&size, 4);
     Gd25FlashWriteBuffer(addr + 4, (uint8_t *)jsonString, size);
     EXT_FREE(jsonString);
