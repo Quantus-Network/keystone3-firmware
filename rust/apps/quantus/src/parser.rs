@@ -3,7 +3,7 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
-use parity_scale_codec::{Decode, Error as CodecError, Input};
+use parity_scale_codec::{Decode, DecodeLimit, Error as CodecError, Input};
 use parity_scale_codec_derive::Decode as DeriveDecode;
 
 /// Hard cap on the raw signing payload; every supported call is far below this.
@@ -43,7 +43,7 @@ pub const KNOWN_NETWORKS: &[([u8; 32], &str)] = &[
 
 // Mirrors of the on-chain call types, decoded with the same SCALE derive the runtime uses.
 // `#[codec(index)]` must match the runtime pallet/call indices and `#[codec(compact)]` must
-// match `#[pallet::compact]` in the pallet declarations (chain `main`, spec >= 133).
+// match `#[pallet::compact]` in the pallet declarations (chain `main`, spec >= 147).
 // Any pallet, call, or variant not declared here hard-fails decoding.
 
 #[derive(DeriveDecode)]
@@ -115,6 +115,8 @@ enum MultisigCall {
     Execute {
         multisig_address: [u8; 32],
         proposal_id: u32,
+        // Inline `Box<RuntimeCall>`, not the length-prefixed bytes `approve` carries.
+        call: Box<RuntimeCall>,
     },
 }
 
@@ -220,6 +222,7 @@ pub enum QuantusTx {
     MultisigExecute {
         multisig: String,
         proposal_id: u32,
+        inner: Box<QuantusTx>,
     },
 }
 
@@ -299,13 +302,7 @@ impl QuantusTx {
                 call,
                 expiry,
             }) => {
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(format!(
-                        "Multisig call nesting exceeds depth limit {}",
-                        MAX_CALL_DEPTH
-                    ));
-                }
-                let inner = decode_call(&call, depth + 1)?;
+                let inner = decode_call(&call, nested_depth(depth)?)?;
                 Ok(QuantusTx::MultisigPropose {
                     multisig: bytes_to_ss58(&multisig_address),
                     expiry,
@@ -317,15 +314,9 @@ impl QuantusTx {
                 proposal_id,
                 call,
             }) => {
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(format!(
-                        "Multisig call nesting exceeds depth limit {}",
-                        MAX_CALL_DEPTH
-                    ));
-                }
                 // The approved call bytes are signed, so decode and render them; if the
                 // call is not one we can decode, reject rather than blind-approve (H-2).
-                let inner = decode_call(&call, depth + 1)?;
+                let inner = decode_call(&call, nested_depth(depth)?)?;
                 Ok(QuantusTx::MultisigApprove {
                     multisig: bytes_to_ss58(&multisig_address),
                     proposal_id,
@@ -335,10 +326,16 @@ impl QuantusTx {
             RuntimeCall::Multisig(MultisigCall::Execute {
                 multisig_address,
                 proposal_id,
-            }) => Ok(QuantusTx::MultisigExecute {
-                multisig: bytes_to_ss58(&multisig_address),
-                proposal_id,
-            }),
+                call,
+            }) => {
+                // The chain binds execution to the proposal's exact call bytes (audit H-2).
+                let inner = QuantusTx::from_call(*call, nested_depth(depth)?)?;
+                Ok(QuantusTx::MultisigExecute {
+                    multisig: bytes_to_ss58(&multisig_address),
+                    proposal_id,
+                    inner: Box::new(inner),
+                })
+            }
         }
     }
 }
@@ -363,8 +360,8 @@ impl fmt::Display for QuantusTx {
             QuantusTx::MultisigApprove { multisig, proposal_id, inner } => {
                 write!(f, "Multisig approve on {} proposal {} call [{}]", multisig, proposal_id, inner)
             }
-            QuantusTx::MultisigExecute { multisig, proposal_id } => {
-                write!(f, "Multisig execute on {} proposal {}", multisig, proposal_id)
+            QuantusTx::MultisigExecute { multisig, proposal_id, inner } => {
+                write!(f, "Multisig execute on {} proposal {} call [{}]", multisig, proposal_id, inner)
             }
         }
     }
@@ -389,9 +386,28 @@ fn multi_address_to_ss58(address: MultiAddress) -> String {
     bytes_to_ss58(&account_id)
 }
 
+/// Depth of the next nested call, or an error once `MAX_CALL_DEPTH` is reached.
+fn nested_depth(depth: u32) -> Result<u32, String> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(format!(
+            "Multisig call nesting exceeds depth limit {}",
+            MAX_CALL_DEPTH
+        ));
+    }
+    Ok(depth + 1)
+}
+
+/// `execute` nests inline, so the codec recurses before `MAX_CALL_DEPTH` can be checked.
+/// The deepest legitimate payload descends 3 (`execute` -> `execute` -> a `Vec` field).
+const MAX_DECODE_DEPTH: u32 = 4;
+
+fn decode_runtime_call<I: Input>(input: &mut I) -> Result<RuntimeCall, String> {
+    RuntimeCall::decode_with_depth_limit(MAX_DECODE_DEPTH, input).map_err(|e| format!("call: {}", e))
+}
+
 fn decode_call(bytes: &[u8], depth: u32) -> Result<QuantusTx, String> {
     let mut input = bytes;
-    let call = RuntimeCall::decode(&mut input).map_err(|e| format!("call: {}", e))?;
+    let call = decode_runtime_call(&mut input)?;
     if !input.is_empty() {
         return Err(format!("{} trailing bytes after call", input.len()));
     }
@@ -404,7 +420,7 @@ pub fn parse_payload(payload: &[u8]) -> Result<ParsedPayload, String> {
     }
 
     let mut input = payload;
-    let call = RuntimeCall::decode(&mut input).map_err(|e| format!("call: {}", e))?;
+    let call = decode_runtime_call(&mut input)?;
     let extensions =
         SignedExtensions::decode(&mut input).map_err(|e| format!("extensions: {}", e))?;
     if !input.is_empty() {
@@ -533,7 +549,7 @@ mod tests {
         let parsed = parse(&payload);
         assert_transfer(
             &parsed.call,
-            "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG",
+            SS58_REVERSIBLE_DEST,
             1440000000000u128,
             true,
             Some(300000u64),
@@ -629,6 +645,7 @@ mod tests {
     const SS58_C: &str = "qzp5mF2H2vqvXFzuQx2vfv6zKeyNyLgKskqpSvVEawYt9dJPY";
     const SS58_MULTISIG: &str = "qznvdbDy9rPMBEBpimXYsEvY38Gx7XeCa7rWRQ9hveaZemr8U";
     const SS58_DEST: &str = "qzn9sph6ZoQxwseSFyrdfTUEWmozsex7hhCJQPG29nbgesGei";
+    const SS58_REVERSIBLE_DEST: &str = "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG";
 
     fn parse_call_hex(call_hex: &str) -> QuantusTx {
         parse(&payload_with_suffix(call_hex, &[0x00], 0, 0)).call
@@ -680,14 +697,82 @@ mod tests {
         assert!(parse_payload(&payload).is_err());
     }
 
-    #[test]
-    fn test_parse_real_multisig_execute() {
-        match parse_call_hex("1306999999999999999999999999999999999999999999999999999999999999999907000000") {
-            QuantusTx::MultisigExecute { multisig, proposal_id } => {
+    /// `execute` carries the inner call inline (`Box<RuntimeCall>`), with no length prefix.
+    fn execute_wrapping(inner: &[u8]) -> Vec<u8> {
+        let mut call = alloc::vec![0x13, 0x06];
+        call.extend_from_slice(&[0x99; 32]);
+        call.extend_from_slice(&7u32.to_le_bytes());
+        call.extend_from_slice(inner);
+        call
+    }
+
+    fn parse_wrapped(wrapped: Vec<u8>) -> Result<ParsedPayload, String> {
+        let mut payload = wrapped;
+        payload.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        parse_payload(&payload)
+    }
+
+    fn execute_inner(wrapped: Vec<u8>) -> QuantusTx {
+        match parse_wrapped(wrapped).unwrap().call {
+            QuantusTx::MultisigExecute { multisig, proposal_id, inner } => {
                 assert_eq!(multisig, SS58_MULTISIG);
                 assert_eq!(proposal_id, 7);
+                *inner
             }
             other => panic!("expected MultisigExecute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_real_multisig_execute() {
+        let inner = hex::decode("020000777777777777777777777777777777777777777777777777777777777777777707002465c709").unwrap();
+        assert_transfer(&execute_inner(execute_wrapping(&inner)), SS58_DEST, 42_000_000_000, false, None);
+    }
+
+    #[test]
+    fn test_multisig_execute_renders_reversible_inner_call() {
+        let inner = hex::decode(REVERSIBLE_CALL).unwrap();
+        assert_transfer(&execute_inner(execute_wrapping(&inner)), SS58_REVERSIBLE_DEST, 1_440_000_000_000, true, Some(300_000));
+    }
+
+    #[test]
+    fn test_reject_multisig_execute_with_undecodable_call() {
+        assert!(parse_wrapped(execute_wrapping(&hex::decode("0500").unwrap())).is_err());
+    }
+
+    #[test]
+    fn test_reject_multisig_execute_without_inner_call() {
+        let mut call = alloc::vec![0x13, 0x06];
+        call.extend_from_slice(&[0x99; 32]);
+        call.extend_from_slice(&7u32.to_le_bytes());
+        assert!(parse_wrapped(call).is_err());
+    }
+
+    #[test]
+    fn test_multisig_execute_nesting_depth_limit() {
+        let transfer = hex::decode(TRANSFER_CALL_1).unwrap();
+        assert!(parse_wrapped(execute_wrapping(&execute_wrapping(&transfer))).is_ok());
+
+        let err = parse_wrapped(execute_wrapping(&execute_wrapping(&execute_wrapping(&transfer)))).unwrap_err();
+        assert!(err.contains("depth limit"), "{}", err);
+    }
+
+    #[test]
+    fn test_execute_nesting_bomb_rejected_by_codec_depth_limit() {
+        // Inline nesting recurses inside the codec, before any parser-level depth check.
+        let mut call = hex::decode(TRANSFER_CALL_1).unwrap();
+        for _ in 0..150 {
+            call = execute_wrapping(&call);
+        }
+        assert!(parse_wrapped(call).is_err());
+    }
+
+    #[test]
+    fn test_multisig_execute_of_propose_renders_both_levels() {
+        let transfer = hex::decode(TRANSFER_CALL_1).unwrap();
+        match execute_inner(execute_wrapping(&propose_wrapping(&transfer))) {
+            QuantusTx::MultisigPropose { expiry, .. } => assert_eq!(expiry, 5000),
+            other => panic!("expected MultisigPropose, got {:?}", other),
         }
     }
 
