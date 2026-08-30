@@ -25,6 +25,8 @@ const MAX_MULTISIG_SIGNERS: usize = 48;
 /// this is deliberately tighter, because a call a signer cannot review is one they cannot
 /// meaningfully approve.
 const MAX_CALL_BYTES: usize = 2 * 1024;
+/// The limit has to clear the call it was sized for, or it is not the limit we documented.
+const _: () = assert!(MAX_CALL_BYTES > 1707);
 
 /// Networks this firmware will sign for: (genesis hash, display name).
 /// A payload whose `CheckGenesis` hash is not listed here is rejected.
@@ -621,12 +623,9 @@ mod tests {
     }
 
     #[test]
-    fn test_call_size_limit_covers_the_largest_expected_call() {
-        // A batch_all of 32 transfers is 1667 bytes at the worst-case encoding, 1707 inside
-        // a multisig wrapper; the limit must sit above that.
-        const WORST_CASE_BATCH_IN_MULTISIG: usize = 1707;
-        assert!(MAX_CALL_BYTES > WORST_CASE_BATCH_IN_MULTISIG);
-        // And the signer cap must stay reachable, so it is still the check that fires there.
+    fn test_signer_cap_stays_reachable_below_the_size_limit() {
+        // Otherwise an over-signer proposal would fail on bytes and the signer cap would
+        // become unreachable dead code.
         assert!(create_multisig_call(MAX_MULTISIG_SIGNERS + 1).len() < MAX_CALL_BYTES);
     }
 
