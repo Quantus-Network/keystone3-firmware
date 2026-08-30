@@ -564,6 +564,22 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_transfer_keep_alive() {
+        // Same review surface as transfer_allow_death, and the only other Balances call
+        // the device signs, so it needs its own vector.
+        let call = "02030077777777777777777777777777777777777777777777777777777777777777770b00a89c134602";
+        assert_transfer(&parse_call_hex(call), SS58_DEST, 2_500_000_000_000, false, None);
+    }
+
+    #[test]
+    fn test_parse_schedule_transfer_without_delay() {
+        // The reversal window comes from the account's on-chain setting, so the parser
+        // reports no timeframe rather than inventing one.
+        let call = "0b030077777777777777777777777777777777777777777777777777777777777777770030ef7dba0200000000000000000000";
+        assert_transfer(&parse_call_hex(call), SS58_DEST, 3_000_000_000_000, true, None);
+    }
+
+    #[test]
     fn test_parse_reversible_transfer_with_delay() {
         let payload = payload_with_suffix(REVERSIBLE_CALL, &[0x00], 3, 0);
         let parsed = parse(&payload);
