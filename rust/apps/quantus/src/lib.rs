@@ -12,6 +12,11 @@ use qp_poseidon_core::hash_bytes;
 use rust_tools::debug;
 use cryptoxide::hashing::blake2b_256;
 
+/// FIPS 204 ML-DSA signing context for on-chain extrinsics. The runtime signs and verifies
+/// under this string, so a signature made with any other context is rejected as a bad
+/// signature. Mirrors `qp_dilithium_crypto::signing_context::EXTRINSIC` in the chain.
+pub const EXTRINSIC_CONTEXT: &[u8] = b"QUANTUS_EXTRINSIC";
+
 pub fn decode_ur_qr_parts(ur_parts: &[String]) -> Result<Vec<u8>> {
     use quantus_ur::decode_bytes;
     
@@ -314,7 +319,7 @@ fn sign_payload_with_keys(
     };
 
     let hedge = SensitiveBytes32::new(&mut hedge);
-    let signature = keys.sign(&msg_to_sign, None, Some(&hedge))
+    let signature = keys.sign(&msg_to_sign, Some(EXTRINSIC_CONTEXT), Some(&hedge))
         .map_err(|e| QuantusError::SignFailure(alloc::format!("{:?}", e)))?;
 
     #[cfg(not(test))]
