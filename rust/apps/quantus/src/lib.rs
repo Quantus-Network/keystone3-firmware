@@ -156,12 +156,11 @@ fn append_rows(tx: &QuantusTx, labels: &mut Vec<String>, values: &mut Vec<String
             push_row(labels, values, "Proposed Call", tx_type_title(inner).to_string());
             append_rows(inner, labels, values, with_checkphrase);
         }
-        QuantusTx::MultisigExecute { multisig, proposal_id } => {
+        QuantusTx::MultisigExecute { multisig, proposal_id, inner } => {
             push_address_row(labels, values, "Multisig", multisig, with_checkphrase);
             push_row(labels, values, "Proposal ID", proposal_id.to_string());
-            // Execute carries no call bytes, so the proposal contents cannot be verified
-            // on-device; say so instead of implying a verifiable review (audit H-2).
-            push_row(labels, values, "Warning", "Proposal contents not verifiable on-device".to_string());
+            push_row(labels, values, "Executed Call", tx_type_title(inner).to_string());
+            append_rows(inner, labels, values, with_checkphrase);
         }
     }
 }

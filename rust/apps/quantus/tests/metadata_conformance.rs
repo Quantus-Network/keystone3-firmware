@@ -2,19 +2,20 @@
 //! runtime metadata the chain itself publishes, so a codec mismatch (e.g. compact vs fixed
 //! u128 amounts) can never silently change what the device displays for the bytes it signs.
 //!
-//! The fixture is the live Planck V14 metadata (spec 136). Regenerate with:
+//! The fixture is the V14 metadata of the chain runtime that introduces the clearsignable
+//! `multisig::execute` (spec 147, chain PR #675). Regenerate against a node with:
 //!   curl -s -H "Content-Type: application/json" \
 //!     -d '{"jsonrpc":"2.0","id":1,"method":"state_getMetadata","params":[]}' \
-//!     https://a1-planck.quantus.cat | jq -r .result | cut -c3- | xxd -r -p > planck_metadata.scale
+//!     <node-url> | jq -r .result | cut -c3- | xxd -r -p > quantus_metadata.scale
 
 use frame_metadata::v14::RuntimeMetadataV14;
 use frame_metadata::{RuntimeMetadata, RuntimeMetadataPrefixed};
 use parity_scale_codec::Decode;
 use scale_info::{form::PortableForm, Type, TypeDef, TypeDefPrimitive, Variant};
 
-const METADATA: &[u8] = include_bytes!("fixtures/planck_metadata_v14_spec136.scale");
+const METADATA: &[u8] = include_bytes!("fixtures/quantus_metadata_v14_spec147.scale");
 
-fn planck_metadata() -> RuntimeMetadataV14 {
+fn chain_metadata() -> RuntimeMetadataV14 {
     let prefixed = RuntimeMetadataPrefixed::decode(&mut &METADATA[..]).expect("decode metadata");
     match prefixed.1 {
         RuntimeMetadata::V14(meta) => meta,
@@ -128,6 +129,16 @@ fn assert_multi_address(meta: &RuntimeMetadataV14, id: u32, what: &str) {
     assert_32_byte_newtype(meta, id_variant.fields[0].ty.id, "AccountId32", what);
 }
 
+/// The runtime `Call` enum itself, whose pallet indices the parser mirrors.
+fn assert_runtime_call(meta: &RuntimeMetadataV14, id: u32, what: &str) {
+    let ty = resolve(meta, id);
+    assert_eq!(ty.path.segments.last().map(String::as_str), Some("RuntimeCall"), "{}", what);
+    let TypeDef::Variant(v) = &ty.type_def else { panic!("{}: not a variant", what) };
+    for (index, name) in [(2, "Balances"), (11, "ReversibleTransfers"), (19, "Multisig")] {
+        call(&v.variants, index, name);
+    }
+}
+
 fn assert_unit(meta: &RuntimeMetadataV14, id: u32, what: &str) {
     match &resolve(meta, id).type_def {
         TypeDef::Composite(c) if c.fields.is_empty() => {}
@@ -138,7 +149,7 @@ fn assert_unit(meta: &RuntimeMetadataV14, id: u32, what: &str) {
 
 #[test]
 fn balances_transfer_amounts_are_compact_u128() {
-    let meta = planck_metadata();
+    let meta = chain_metadata();
     let calls = pallet_calls(&meta, "Balances", 2);
     for (index, name) in [(0, "transfer_allow_death"), (3, "transfer_keep_alive")] {
         let c = call(calls, index, name);
@@ -150,7 +161,7 @@ fn balances_transfer_amounts_are_compact_u128() {
 
 #[test]
 fn reversible_transfer_amounts_are_plain_u128() {
-    let meta = planck_metadata();
+    let meta = chain_metadata();
     let calls = pallet_calls(&meta, "ReversibleTransfers", 11);
     for (index, name, fields) in [
         (3, "schedule_transfer", &["dest", "amount"][..]),
@@ -175,7 +186,7 @@ fn reversible_transfer_amounts_are_plain_u128() {
 
 #[test]
 fn multisig_calls_match_mirror_types() {
-    let meta = planck_metadata();
+    let meta = chain_metadata();
     let calls = pallet_calls(&meta, "Multisig", 19);
 
     let create = call(calls, 0, "create_multisig");
@@ -203,10 +214,13 @@ fn multisig_calls_match_mirror_types() {
     assert_primitive(&meta, field_ty(approve, "proposal_id"), TypeDefPrimitive::U32, "approve");
     assert_call_bytes(&meta, field_ty(approve, "call"), "approve call");
 
+    // Execute now resubmits the proposal's inner call, but as an inline `Box<RuntimeCall>`
+    // rather than the length-prefixed bytes `propose` and `approve` carry.
     let execute = call(calls, 6, "execute");
-    assert_field_names(execute, &["multisig_address", "proposal_id"]);
+    assert_field_names(execute, &["multisig_address", "proposal_id", "call"]);
     assert_32_byte_newtype(&meta, field_ty(execute, "multisig_address"), "AccountId32", "execute");
     assert_primitive(&meta, field_ty(execute, "proposal_id"), TypeDefPrimitive::U32, "execute");
+    assert_runtime_call(&meta, field_ty(execute, "call"), "execute call");
 }
 
 /// The parser's `SignedExtensions` struct assumes an exact extension order and codec for each
@@ -214,7 +228,7 @@ fn multisig_calls_match_mirror_types() {
 /// encodings against the metadata.
 #[test]
 fn signed_extension_order_and_codecs_match_mirror() {
-    let meta = planck_metadata();
+    let meta = chain_metadata();
     assert_eq!(meta.extrinsic.version, 4);
 
     let identifiers: Vec<&str> = meta
@@ -233,10 +247,11 @@ fn signed_extension_order_and_codecs_match_mirror() {
             "CheckMortality",
             "CheckNonce",
             "CheckWeight",
-            "ChargeTransactionPayment",
-            "CheckMetadataHash",
             "ReversibleTransactionExtension",
             "WormholeProofRecorderExtension",
+            "ChargeTransactionPayment",
+            "CheckMetadataHash",
+            "WeightReclaim",
         ]
     );
 
@@ -292,7 +307,9 @@ fn signed_extension_order_and_codecs_match_mirror() {
                 assert_32_byte_newtype(&meta, ext.additional_signed.id, "H256", what);
             }
             _ => {
-                // CheckNonZeroSender, CheckWeight, Reversible, Wormhole: no signed bytes at all.
+                // CheckNonZeroSender, CheckWeight, Reversible, Wormhole, WeightReclaim: no
+                // signed bytes at all, so reordering them cannot move the bytes the parser
+                // mirrors — only the byte-contributing extensions below are load-bearing.
                 assert_unit(&meta, ext.ty.id, what);
                 assert_unit(&meta, ext.additional_signed.id, what);
             }

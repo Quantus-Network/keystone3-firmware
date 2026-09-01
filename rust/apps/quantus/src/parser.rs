@@ -3,11 +3,12 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt;
-use parity_scale_codec::{Decode, Error as CodecError, Input};
+use parity_scale_codec::{Decode, DecodeLimit, Error as CodecError, Input};
 use parity_scale_codec_derive::Decode as DeriveDecode;
 
-/// Hard cap on the raw signing payload; every supported call is far below this.
-pub const MAX_PAYLOAD_BYTES: usize = 8 * 1024;
+/// Hard cap on the raw signing payload. Sized so a chain-maximum proposal still fits:
+/// `MAX_CALL_BYTES` of inner call, plus the multisig wrapper and the signed extensions.
+pub const MAX_PAYLOAD_BYTES: usize = 12 * 1024;
 /// Maximum nesting of multisig `propose` inner calls (top-level call is depth 0).
 const MAX_CALL_DEPTH: u32 = 2;
 /// Minimum reversible-transfer delay, matching the on-chain `MinDelayPeriodMoment` (12 s);
@@ -17,6 +18,14 @@ const MIN_REVERSIBLE_DELAY_MS: u64 = 12_000;
 /// Maximum number of multisig signers accepted for review; larger proposals are rejected
 /// so the review screen and checkphrase jobs stay bounded (audit M-1).
 const MAX_MULTISIG_SIGNERS: usize = 48;
+/// Largest inner call a multisig proposal may carry, mirroring the runtime's
+/// `pallet_multisig::Config::MaxCallSize` (`BoundedVec<u8, MaxCallSize>`, 10 KiB).
+///
+/// Deliberately the chain's number rather than a tighter one of our own: a limit below it
+/// would refuse proposals the chain accepts, leaving a multisig no cold signer could act on.
+const MAX_CALL_BYTES: usize = 10 * 1024;
+/// A chain-maximum proposal has to fit in a payload, or the cap above is unreachable.
+const _: () = assert!(MAX_PAYLOAD_BYTES > MAX_CALL_BYTES + 256);
 
 /// Networks this firmware will sign for: (genesis hash, display name).
 /// A payload whose `CheckGenesis` hash is not listed here is rejected.
@@ -43,7 +52,7 @@ pub const KNOWN_NETWORKS: &[([u8; 32], &str)] = &[
 
 // Mirrors of the on-chain call types, decoded with the same SCALE derive the runtime uses.
 // `#[codec(index)]` must match the runtime pallet/call indices and `#[codec(compact)]` must
-// match `#[pallet::compact]` in the pallet declarations (chain `main`, spec >= 133).
+// match `#[pallet::compact]` in the pallet declarations (chain `main`, spec >= 147).
 // Any pallet, call, or variant not declared here hard-fails decoding.
 
 #[derive(DeriveDecode)]
@@ -115,6 +124,8 @@ enum MultisigCall {
     Execute {
         multisig_address: [u8; 32],
         proposal_id: u32,
+        // Inline `Box<RuntimeCall>`, not the length-prefixed bytes `approve` carries.
+        call: Box<RuntimeCall>,
     },
 }
 
@@ -220,6 +231,7 @@ pub enum QuantusTx {
     MultisigExecute {
         multisig: String,
         proposal_id: u32,
+        inner: Box<QuantusTx>,
     },
 }
 
@@ -299,13 +311,7 @@ impl QuantusTx {
                 call,
                 expiry,
             }) => {
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(format!(
-                        "Multisig call nesting exceeds depth limit {}",
-                        MAX_CALL_DEPTH
-                    ));
-                }
-                let inner = decode_call(&call, depth + 1)?;
+                let inner = decode_call(&call, nested_depth(depth)?)?;
                 Ok(QuantusTx::MultisigPropose {
                     multisig: bytes_to_ss58(&multisig_address),
                     expiry,
@@ -317,15 +323,9 @@ impl QuantusTx {
                 proposal_id,
                 call,
             }) => {
-                if depth >= MAX_CALL_DEPTH {
-                    return Err(format!(
-                        "Multisig call nesting exceeds depth limit {}",
-                        MAX_CALL_DEPTH
-                    ));
-                }
                 // The approved call bytes are signed, so decode and render them; if the
                 // call is not one we can decode, reject rather than blind-approve (H-2).
-                let inner = decode_call(&call, depth + 1)?;
+                let inner = decode_call(&call, nested_depth(depth)?)?;
                 Ok(QuantusTx::MultisigApprove {
                     multisig: bytes_to_ss58(&multisig_address),
                     proposal_id,
@@ -335,10 +335,16 @@ impl QuantusTx {
             RuntimeCall::Multisig(MultisigCall::Execute {
                 multisig_address,
                 proposal_id,
-            }) => Ok(QuantusTx::MultisigExecute {
-                multisig: bytes_to_ss58(&multisig_address),
-                proposal_id,
-            }),
+                call,
+            }) => {
+                // The chain binds execution to the proposal's exact call bytes (audit H-2).
+                let inner = QuantusTx::from_call(*call, nested_depth(depth)?)?;
+                Ok(QuantusTx::MultisigExecute {
+                    multisig: bytes_to_ss58(&multisig_address),
+                    proposal_id,
+                    inner: Box::new(inner),
+                })
+            }
         }
     }
 }
@@ -363,8 +369,8 @@ impl fmt::Display for QuantusTx {
             QuantusTx::MultisigApprove { multisig, proposal_id, inner } => {
                 write!(f, "Multisig approve on {} proposal {} call [{}]", multisig, proposal_id, inner)
             }
-            QuantusTx::MultisigExecute { multisig, proposal_id } => {
-                write!(f, "Multisig execute on {} proposal {}", multisig, proposal_id)
+            QuantusTx::MultisigExecute { multisig, proposal_id, inner } => {
+                write!(f, "Multisig execute on {} proposal {} call [{}]", multisig, proposal_id, inner)
             }
         }
     }
@@ -389,9 +395,39 @@ fn multi_address_to_ss58(address: MultiAddress) -> String {
     bytes_to_ss58(&account_id)
 }
 
+fn check_call_size(len: usize) -> Result<(), String> {
+    if len > MAX_CALL_BYTES {
+        return Err(format!(
+            "Call is {} bytes, over the {} byte review limit",
+            len, MAX_CALL_BYTES
+        ));
+    }
+    Ok(())
+}
+
+/// Depth of the next nested call, or an error once `MAX_CALL_DEPTH` is reached.
+fn nested_depth(depth: u32) -> Result<u32, String> {
+    if depth >= MAX_CALL_DEPTH {
+        return Err(format!(
+            "Multisig call nesting exceeds depth limit {}",
+            MAX_CALL_DEPTH
+        ));
+    }
+    Ok(depth + 1)
+}
+
+/// `execute` nests inline, so the codec recurses before `MAX_CALL_DEPTH` can be checked.
+/// The deepest legitimate payload descends 3 (`execute` -> `execute` -> a `Vec` field).
+const MAX_DECODE_DEPTH: u32 = 4;
+
+fn decode_runtime_call<I: Input>(input: &mut I) -> Result<RuntimeCall, String> {
+    RuntimeCall::decode_with_depth_limit(MAX_DECODE_DEPTH, input).map_err(|e| format!("call: {}", e))
+}
+
 fn decode_call(bytes: &[u8], depth: u32) -> Result<QuantusTx, String> {
+    check_call_size(bytes.len())?;
     let mut input = bytes;
-    let call = RuntimeCall::decode(&mut input).map_err(|e| format!("call: {}", e))?;
+    let call = decode_runtime_call(&mut input)?;
     if !input.is_empty() {
         return Err(format!("{} trailing bytes after call", input.len()));
     }
@@ -404,7 +440,7 @@ pub fn parse_payload(payload: &[u8]) -> Result<ParsedPayload, String> {
     }
 
     let mut input = payload;
-    let call = RuntimeCall::decode(&mut input).map_err(|e| format!("call: {}", e))?;
+    let call = decode_runtime_call(&mut input)?;
     let extensions =
         SignedExtensions::decode(&mut input).map_err(|e| format!("extensions: {}", e))?;
     if !input.is_empty() {
@@ -528,12 +564,28 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_transfer_keep_alive() {
+        // Same review surface as transfer_allow_death, and the only other Balances call
+        // the device signs, so it needs its own vector.
+        let call = "02030077777777777777777777777777777777777777777777777777777777777777770b00a89c134602";
+        assert_transfer(&parse_call_hex(call), SS58_DEST, 2_500_000_000_000, false, None);
+    }
+
+    #[test]
+    fn test_parse_schedule_transfer_without_delay() {
+        // The reversal window comes from the account's on-chain setting, so the parser
+        // reports no timeframe rather than inventing one.
+        let call = "0b030077777777777777777777777777777777777777777777777777777777777777770030ef7dba0200000000000000000000";
+        assert_transfer(&parse_call_hex(call), SS58_DEST, 3_000_000_000_000, true, None);
+    }
+
+    #[test]
     fn test_parse_reversible_transfer_with_delay() {
         let payload = payload_with_suffix(REVERSIBLE_CALL, &[0x00], 3, 0);
         let parsed = parse(&payload);
         assert_transfer(
             &parsed.call,
-            "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG",
+            SS58_REVERSIBLE_DEST,
             1440000000000u128,
             true,
             Some(300000u64),
@@ -568,6 +620,51 @@ mod tests {
         call.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
         let err = parse_payload(&call).unwrap_err();
         assert!(err.contains("signers"), "{}", err);
+    }
+
+    /// `create_multisig` with `signers` accounts, the cheapest way to build a call of a
+    /// chosen size out of calls the parser actually supports.
+    fn create_multisig_call(signers: usize) -> Vec<u8> {
+        let mut call = alloc::vec![0x13, 0x00];
+        call.extend(Compact(signers as u32).encode());
+        for _ in 0..signers {
+            call.extend_from_slice(&[0xaa; 32]);
+        }
+        call.extend_from_slice(&2u32.to_le_bytes());
+        call.extend_from_slice(&0u64.to_le_bytes());
+        call
+    }
+
+    #[test]
+    fn test_signer_cap_stays_reachable_below_the_size_limit() {
+        // Otherwise an over-signer proposal would fail on bytes and the signer cap would
+        // become unreachable dead code.
+        assert!(create_multisig_call(MAX_MULTISIG_SIGNERS + 1).len() < MAX_CALL_BYTES);
+    }
+
+    #[test]
+    fn test_accepts_an_inner_call_at_the_chain_limit() {
+        // A proposal the chain would accept must not be refused here: 319 signers encodes to
+        // 10_224 bytes, just inside `MaxCallSize`, and the propose wrapper pushes the outer
+        // call past it — which is exactly why the limit is not applied to the outer call.
+        let inner = create_multisig_call(319);
+        assert!(inner.len() <= MAX_CALL_BYTES);
+        let wrapped = propose_wrapping(&inner);
+        assert!(wrapped.len() > MAX_CALL_BYTES);
+        // Decoding gets past the size gate; the signer cap is what rejects it.
+        let err = parse_wrapped(wrapped).unwrap_err();
+        assert!(err.contains("signers"), "{}", err);
+    }
+
+    #[test]
+    fn test_reject_inner_call_over_the_chain_limit() {
+        // 320 signers encodes to 10_256 bytes, just over `MaxCallSize`.
+        let oversized = create_multisig_call(320);
+        assert!(oversized.len() > MAX_CALL_BYTES);
+        for wrapped in [propose_wrapping(&oversized), approve_wrapping(&oversized)] {
+            let err = parse_wrapped(wrapped).unwrap_err();
+            assert!(err.contains("review limit"), "{}", err);
+        }
     }
 
     #[test]
@@ -629,6 +726,7 @@ mod tests {
     const SS58_C: &str = "qzp5mF2H2vqvXFzuQx2vfv6zKeyNyLgKskqpSvVEawYt9dJPY";
     const SS58_MULTISIG: &str = "qznvdbDy9rPMBEBpimXYsEvY38Gx7XeCa7rWRQ9hveaZemr8U";
     const SS58_DEST: &str = "qzn9sph6ZoQxwseSFyrdfTUEWmozsex7hhCJQPG29nbgesGei";
+    const SS58_REVERSIBLE_DEST: &str = "qzn5St24cMsjE4JKYdXLBctusWj5zom67dnrW22SweAahLGeG";
 
     fn parse_call_hex(call_hex: &str) -> QuantusTx {
         parse(&payload_with_suffix(call_hex, &[0x00], 0, 0)).call
@@ -680,14 +778,82 @@ mod tests {
         assert!(parse_payload(&payload).is_err());
     }
 
-    #[test]
-    fn test_parse_real_multisig_execute() {
-        match parse_call_hex("1306999999999999999999999999999999999999999999999999999999999999999907000000") {
-            QuantusTx::MultisigExecute { multisig, proposal_id } => {
+    /// `execute` carries the inner call inline (`Box<RuntimeCall>`), with no length prefix.
+    fn execute_wrapping(inner: &[u8]) -> Vec<u8> {
+        let mut call = alloc::vec![0x13, 0x06];
+        call.extend_from_slice(&[0x99; 32]);
+        call.extend_from_slice(&7u32.to_le_bytes());
+        call.extend_from_slice(inner);
+        call
+    }
+
+    fn parse_wrapped(wrapped: Vec<u8>) -> Result<ParsedPayload, String> {
+        let mut payload = wrapped;
+        payload.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
+        parse_payload(&payload)
+    }
+
+    fn execute_inner(wrapped: Vec<u8>) -> QuantusTx {
+        match parse_wrapped(wrapped).unwrap().call {
+            QuantusTx::MultisigExecute { multisig, proposal_id, inner } => {
                 assert_eq!(multisig, SS58_MULTISIG);
                 assert_eq!(proposal_id, 7);
+                *inner
             }
             other => panic!("expected MultisigExecute, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_real_multisig_execute() {
+        let inner = hex::decode("020000777777777777777777777777777777777777777777777777777777777777777707002465c709").unwrap();
+        assert_transfer(&execute_inner(execute_wrapping(&inner)), SS58_DEST, 42_000_000_000, false, None);
+    }
+
+    #[test]
+    fn test_multisig_execute_renders_reversible_inner_call() {
+        let inner = hex::decode(REVERSIBLE_CALL).unwrap();
+        assert_transfer(&execute_inner(execute_wrapping(&inner)), SS58_REVERSIBLE_DEST, 1_440_000_000_000, true, Some(300_000));
+    }
+
+    #[test]
+    fn test_reject_multisig_execute_with_undecodable_call() {
+        assert!(parse_wrapped(execute_wrapping(&hex::decode("0500").unwrap())).is_err());
+    }
+
+    #[test]
+    fn test_reject_multisig_execute_without_inner_call() {
+        let mut call = alloc::vec![0x13, 0x06];
+        call.extend_from_slice(&[0x99; 32]);
+        call.extend_from_slice(&7u32.to_le_bytes());
+        assert!(parse_wrapped(call).is_err());
+    }
+
+    #[test]
+    fn test_multisig_execute_nesting_depth_limit() {
+        let transfer = hex::decode(TRANSFER_CALL_1).unwrap();
+        assert!(parse_wrapped(execute_wrapping(&execute_wrapping(&transfer))).is_ok());
+
+        let err = parse_wrapped(execute_wrapping(&execute_wrapping(&execute_wrapping(&transfer)))).unwrap_err();
+        assert!(err.contains("depth limit"), "{}", err);
+    }
+
+    #[test]
+    fn test_execute_nesting_bomb_rejected_by_codec_depth_limit() {
+        // Inline nesting recurses inside the codec, before any parser-level depth check.
+        let mut call = hex::decode(TRANSFER_CALL_1).unwrap();
+        for _ in 0..150 {
+            call = execute_wrapping(&call);
+        }
+        assert!(parse_wrapped(call).is_err());
+    }
+
+    #[test]
+    fn test_multisig_execute_of_propose_renders_both_levels() {
+        let transfer = hex::decode(TRANSFER_CALL_1).unwrap();
+        match execute_inner(execute_wrapping(&propose_wrapping(&transfer))) {
+            QuantusTx::MultisigPropose { expiry, .. } => assert_eq!(expiry, 5000),
+            other => panic!("expected MultisigPropose, got {:?}", other),
         }
     }
 
@@ -731,15 +897,19 @@ mod tests {
 
     #[test]
     fn test_deep_nesting_bomb_rejected_quickly() {
-        // The audit's C-1 payload shape: hundreds of nested propose levels. Must fail via the
-        // depth limit, not by exhausting the stack.
+        // The audit's C-1 payload shape: hundreds of nested propose levels. Must fail on one
+        // of the counters — depth, payload size, or call size — not by exhausting the stack.
         let mut call = hex::decode(TRANSFER_CALL_1).unwrap();
         for _ in 0..300 {
             call = propose_wrapping(&call);
         }
         call.extend(ext_suffix(&[0x00], 0, 0, &PLANCK_GENESIS));
         let err = parse_payload(&call).unwrap_err();
-        assert!(err.contains("depth limit") || err.contains("too large"), "{}", err);
+        assert!(
+            err.contains("depth limit") || err.contains("too large") || err.contains("review limit"),
+            "{}",
+            err
+        );
     }
 
     #[test]
