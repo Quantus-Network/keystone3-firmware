@@ -420,7 +420,7 @@ mod tests {
             "Public key portion should match the derived key");
         let public_key = PublicKey::from_bytes(&decoded_signature[SIGNBYTES..])
             .expect("Public key should deserialize");
-        assert!(public_key.verify(&test_payload, &decoded_signature[..SIGNBYTES], None),
+        assert!(public_key.verify(&test_payload, &decoded_signature[..SIGNBYTES], Some(app_quantus::EXTRINSIC_CONTEXT)),
             "Signature should verify under the embedded public key");
         
         unsafe {
